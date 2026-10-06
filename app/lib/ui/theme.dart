@@ -54,7 +54,7 @@ Color statusColor(LinkStatus s) => switch (s) {
   LinkStatus.online => C.ok,
   LinkStatus.connecting => C.warn,
   LinkStatus.offline => C.muted,
-  LinkStatus.unauthorized => C.danger,
+  LinkStatus.unauthorized || LinkStatus.untrusted => C.danger,
 };
 
 String statusText(LinkStatus s) => switch (s) {
@@ -62,6 +62,7 @@ String statusText(LinkStatus s) => switch (s) {
   LinkStatus.connecting => 'подключение…',
   LinkStatus.offline => 'не в сети',
   LinkStatus.unauthorized => 'нужно подключить заново',
+  LinkStatus.untrusted => 'не узнан — подключите заново',
 };
 
 String launchError(String? code) => switch (code) {

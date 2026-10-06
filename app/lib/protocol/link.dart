@@ -9,7 +9,9 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'client.dart';
 import 'models.dart';
 
-enum LinkStatus { connecting, online, offline, unauthorized }
+/// [untrusted]: the computer showed another TLS certificate than the one pinned
+/// (reinstalled agent, or someone in between); only pairing again helps.
+enum LinkStatus { connecting, online, offline, unauthorized, untrusted }
 
 /// An open window of a button's app on the PC.
 class AppWindow {
@@ -76,6 +78,10 @@ class MachineLink {
   final stats = ValueNotifier<SysStats?>(null);
   String? host;
 
+  /// The current connection is TLS (pictures then come over HTTPS too).
+  bool secure = false;
+
+  bool get _dead => status == LinkStatus.unauthorized || status == LinkStatus.untrusted;
   WebSocket? _ws;
   bool _running = false;
   int _failures = 0;
@@ -97,7 +103,7 @@ class MachineLink {
   bool get present {
     if (status == LinkStatus.online) return true;
     final down = _downSince;
-    return status != LinkStatus.unauthorized && down != null && DateTime.now().difference(down) < graceTime;
+    return !_dead && down != null && DateTime.now().difference(down) < graceTime;
   }
 
   /// Nothing to tell the user about the connection: [present], or the first attempt is
@@ -107,7 +113,7 @@ class MachineLink {
   /// Status for the screen, steady between attempts: a background reconnect reads as
   /// "connecting", a computer that stays away as "offline".
   LinkStatus get shownStatus => switch (status) {
-    LinkStatus.online || LinkStatus.unauthorized => status,
+    LinkStatus.online || LinkStatus.unauthorized || LinkStatus.untrusted => status,
     _ => quiet ? LinkStatus.connecting : LinkStatus.offline,
   };
 
@@ -123,7 +129,7 @@ class MachineLink {
     _machine = m;
     if (tokenChanged || reconnect) {
       _closeSocket();
-      if (status == LinkStatus.unauthorized) status = LinkStatus.offline;
+      if (_dead) status = LinkStatus.offline;
       start();
       reconnectNow();
     }
@@ -140,7 +146,7 @@ class MachineLink {
     _running = false;
     _retry?.cancel();
     _closeSocket();
-    if (status != LinkStatus.unauthorized) _set(LinkStatus.offline);
+    if (!_dead) _set(LinkStatus.offline);
   }
 
   /// Skips the backoff wait (app resumed, user tapped the machine, network changed).
@@ -158,15 +164,30 @@ class MachineLink {
     _connecting = true;
     if (status != LinkStatus.online) _set(LinkStatus.connecting);
     String? target;
+    final fp = _machine.fp;
+    Pin? pin = fp == null ? null : Pin(fp);
     try {
-      final found = await probeHosts(_machine.candidates, _machine.port, expectId: _machine.id);
+      var found = await probeHosts(_machine.candidates, _machine.port, expectId: _machine.id, pin: pin);
+      if (pin != null && pin.mismatch) throw const _Untrusted();
+      if (found == null && pin != null && !_machine.tlsOk) {
+        // TLS has never worked with this computer yet (an older agent, say): plain is
+        // still allowed. Once it has, there is no way back.
+        pin = null;
+        found = await probeHosts(_machine.candidates, _machine.port, expectId: _machine.id);
+      }
       if (found == null) throw const SocketException('unreachable');
       target = found.$1;
+      final usePin = pin;
       final ws = await WebSocket.connect(
         // features=windows: this app can show the window chooser (see docs/protocol.md).
-        'ws://$target:${_machine.port}/api/v1/ws?features=windows',
+        '${usePin == null ? 'ws' : 'wss'}://$target:${_machine.port}/api/v1/ws?features=windows',
         headers: {HttpHeaders.authorizationHeader: 'Bearer ${_machine.token}'},
+        customClient: usePin == null ? null : agentHttpClient(const Duration(seconds: 5), pin: usePin),
       ).timeout(const Duration(seconds: 5));
+      if (usePin != null && usePin.mismatch) {
+        ws.close();
+        throw const _Untrusted();
+      }
       if (!_running) {
         ws.close();
         return;
@@ -174,32 +195,41 @@ class MachineLink {
       ws.pingInterval = const Duration(seconds: 10);
       _ws = ws;
       host = target;
+      secure = usePin != null;
       _failures = 0;
-      if (_machine.lastHost != target) {
-        _machine = _machine.copyWith(lastHost: target);
+      if (_machine.lastHost != target || (secure && !_machine.tlsOk)) {
+        _machine = _machine.copyWith(lastHost: target, tlsOk: secure ? true : null);
         onMachineUpdated(_machine);
       }
       _set(LinkStatus.online);
       ws.listen(_onMessage, onDone: () => _onClosed(ws), onError: (_) => _onClosed(ws), cancelOnError: true);
+    } on _Untrusted {
+      _running = false;
+      _set(LinkStatus.untrusted);
     } on WebSocketException catch (e) {
-      if (await _unauthorized(e, target)) {
+      if (await _unauthorized(e, target, pin)) {
         _running = false;
         _set(LinkStatus.unauthorized);
       } else {
         _scheduleRetry();
       }
     } catch (_) {
-      _scheduleRetry();
+      if (pin != null && pin.mismatch) {
+        _running = false;
+        _set(LinkStatus.untrusted);
+      } else {
+        _scheduleRetry();
+      }
     } finally {
       _connecting = false;
     }
   }
 
-  Future<bool> _unauthorized(WebSocketException e, String? target) async {
+  Future<bool> _unauthorized(WebSocketException e, String? target, Pin? pin) async {
     final m = RegExp(r'status code: (\d+)').firstMatch(e.message);
     if (m != null) return m.group(1) == '401';
     // Older dart:io does not report the status: ask with a plain request.
-    return target != null && await tokenRejected(target, _machine.port, _machine.token);
+    return target != null && await tokenRejected(target, _machine.port, _machine.token, pin: pin == null ? null : Pin(pin.fp));
   }
 
   void _scheduleRetry() {
@@ -236,6 +266,9 @@ class MachineLink {
           final st = DeckState.fromJson(msg);
           state = st;
           _machine = _machine.copyWith(
+            // Paired without the QR fingerprint (or before TLS): learn it from the agent
+            // we already trust with the token; the next connection goes over TLS.
+            fp: _machine.fp == null ? st.tlsFp : null,
             name: st.machine.name.isEmpty ? null : st.machine.name,
             os: st.machine.os.isEmpty ? null : st.machine.os,
             macs: st.machine.macs.isEmpty ? null : st.machine.macs,
@@ -325,7 +358,8 @@ class MachineLink {
   /// Where to fetch icons from, plus the headers the request needs.
   String? iconUrl(String hash) {
     final h = host ?? _machine.lastHost ?? (_machine.hosts.isEmpty ? null : _machine.hosts.first);
-    return h == null ? null : 'http://$h:${_machine.port}/api/v1/icon/$hash.png';
+    final scheme = secure || _machine.tlsOk ? 'https' : 'http';
+    return h == null ? null : '$scheme://$h:${_machine.port}/api/v1/icon/$hash.png';
   }
 
   Map<String, String> get authHeaders => {HttpHeaders.authorizationHeader: 'Bearer ${_machine.token}'};
@@ -371,4 +405,9 @@ class MachineLink {
     stop();
     _graceEnd?.cancel();
   }
+}
+
+/// The certificate did not match the pinned fingerprint.
+class _Untrusted implements Exception {
+  const _Untrusted();
 }

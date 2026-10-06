@@ -275,4 +275,32 @@ void main() {
       } catch (_) {}
     }
   }, skip: live ? false : 'set BARPHONE_LIVE=1 with a running agent');
+
+  test('pairs over TLS from the QR and stays on TLS (one port for both)', () async {
+    final st = (await uiCall('GET', '/api/state')) as Map<String, dynamic>;
+    final port = st['lan']['port'] as int;
+    final pairing = (await uiCall('POST', '/api/pairing')) as Map<String, dynamic>;
+    final p = PairUri.parse(pairing['uri'] as String)!;
+    expect(p.fp, isNotNull, reason: 'the agent puts its fingerprint in the QR');
+    final pin = Pin(p.fp!);
+    final found = await probeHosts(['127.0.0.1'], port, expectId: p.machineId, pin: pin);
+    expect(found, isNotNull, reason: 'HTTPS on the LAN port');
+    final r = await pair('127.0.0.1', port, code: p.code, deviceId: 'tls-live-test', deviceName: 'TLS test', pin: pin);
+
+    final link = MachineLink(
+      SavedMachine(id: p.machineId, name: p.name, os: p.os, port: port, hosts: const ['127.0.0.1'], token: r.token, fp: p.fp, tlsOk: true),
+      onChanged: () {},
+      onMachineUpdated: (_) {},
+    );
+    addTearDown(() async {
+      link.dispose();
+      await uiCall('DELETE', '/api/devices/tls-live-test');
+    });
+    link.start();
+    await waitFor(() => link.status == LinkStatus.online && link.state != null);
+    expect(link.secure, isTrue);
+    expect(link.state!.tlsFp, p.fp);
+    // And the same port still answers in the clear, for phones paired before TLS.
+    expect(await fetchInfo('127.0.0.1', port), isA<MachineInfo>());
+  }, skip: live ? false : 'set BARPHONE_LIVE=1 with an agent running');
 }

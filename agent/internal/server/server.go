@@ -53,6 +53,9 @@ type Server struct {
 	}
 	// Command prepares a command button's process; nil means launch.Command.
 	Command func(store.Button) (*exec.Cmd, error)
+	// TLSFingerprint is the pinned fingerprint of the certificate the LAN port also
+	// speaks TLS with (see SniffTLS); "" when the agent has none.
+	TLSFingerprint string
 
 	hub    hub
 	fwBusy atomic.Bool
@@ -178,6 +181,12 @@ type stateMsg struct {
 	Profiles      []wireProfile  `json:"profiles"`
 	ActiveProfile string         `json:"activeProfile"`
 	Recent        []store.Recent `json:"recent"`
+	// TLS tells phones paired without the QR fingerprint what to pin.
+	TLS *wireTLS `json:"tls,omitempty"`
+}
+
+type wireTLS struct {
+	FP string `json:"fp"`
 }
 
 type wireDeck struct {
@@ -205,6 +214,9 @@ func (s *Server) stateMessage() []byte {
 	}
 	if msg.Recent == nil {
 		msg.Recent = []store.Recent{}
+	}
+	if s.TLSFingerprint != "" {
+		msg.TLS = &wireTLS{FP: s.TLSFingerprint}
 	}
 	for _, p := range cfg.Profiles {
 		msg.Profiles = append(msg.Profiles, wireProfile{ID: p.ID, Name: p.Name, Columns: p.Deck.Columns, Buttons: wireButtons(p.Deck.Buttons)})

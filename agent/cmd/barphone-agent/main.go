@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -29,6 +30,7 @@ import (
 	"barphone/agent/internal/pairing"
 	"barphone/agent/internal/server"
 	"barphone/agent/internal/store"
+	"barphone/agent/internal/tlscert"
 	"barphone/agent/internal/tray"
 )
 
@@ -122,11 +124,20 @@ func main() {
 		}}
 	}
 
+	// The LAN port speaks TLS too; phones pin the certificate's fingerprint.
+	var phoneLn net.Listener = lanLn
+	if cert, fp, err := tlscert.LoadOrCreate(*dir, host); err != nil {
+		logger.Printf("tls: %v — phones connect without encryption", err)
+	} else {
+		srv.TLSFingerprint = fp
+		phoneLn = server.SniffTLS(lanLn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	go srv.Run(ctx)
-	go serve(ctx, logger, "lan", lanLn, srv.LANHandler())
+	go serve(ctx, logger, "lan", phoneLn, srv.LANHandler())
 	go serve(ctx, logger, "ui", uiLn, srv.UIHandler())
 	go discovery.Announce(ctx, st, srv.LANPort, server.OSName(), server.ProtocolVersion, logger)
 	go srv.Apps.Get(ctx, false) // warm the picker cache (also names Store apps for profiles)

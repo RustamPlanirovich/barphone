@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'protocol/client.dart';
 import 'protocol/models.dart';
 import 'state.dart';
 import 'ui/add_machine.dart';
@@ -17,6 +19,9 @@ Future<void> main() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   unawaited(WakelockPlus.enable());
   final app = AppState();
+  // Icons come over HTTPS from agents with self-signed certificates: accept exactly the
+  // ones the paired computers are pinned to. Set before anything opens a connection.
+  HttpOverrides.global = PinningOverrides(() => {for (final l in app.machines) ?l.machine.fp});
   await app.init();
   runApp(BarphoneApp(app: app));
 }

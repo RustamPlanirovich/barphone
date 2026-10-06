@@ -102,6 +102,16 @@ class _DeckPageState extends State<DeckPage> {
 
   Widget _body(BuildContext context, MachineLink link) {
     final st = link.state;
+    if (link.status == LinkStatus.untrusted) {
+      return Notice(
+        icon: Icons.gpp_bad_rounded,
+        title: 'Компьютер не узнан',
+        text:
+            'Он показал другой сертификат, чем при подключении: barphone на нём переустанавливали или кто-то вклинился в сеть. '
+            'Если переустанавливали — подключите телефон заново.',
+        action: FilledButton(onPressed: widget.onAddMachine, child: const Text('Подключить заново')),
+      );
+    }
     if (link.status == LinkStatus.unauthorized) {
       return Notice(
         icon: Icons.link_off_rounded,

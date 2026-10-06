@@ -133,7 +133,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (resumed) {
       timers.check(); // a timer may have run out while the app was away
       for (final l in _links.values) {
-        if (l.status != LinkStatus.unauthorized) l.start();
+        if (l.status != LinkStatus.unauthorized && l.status != LinkStatus.untrusted) l.start();
         l.reconnectNow();
       }
       _startDiscovery();
@@ -201,13 +201,20 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   // ---- pairing ------------------------------------------------------------
   // Each method returns null on success or a message for the user.
 
+  /// With a fingerprint in the QR code, pairing (and everything after it) goes over TLS
+  /// pinned to it: the code and the token never travel in the clear.
   Future<String?> pairWithUri(PairUri p) async {
-    final found = await probeHosts(p.hosts, p.port, expectId: p.machineId);
+    final fp = p.fp;
+    final pin = fp == null ? null : Pin(fp);
+    final found = await probeHosts(p.hosts, p.port, expectId: p.machineId, pin: pin);
+    if (pin != null && pin.mismatch) {
+      return 'Компьютер по этому адресу не совпал с QR-кодом (другой сертификат). Сопряжение отменено.';
+    }
     if (found == null) {
       return 'Компьютер «${p.name}» не отвечает. Телефон и компьютер должны быть в одной сети, '
           'а брандмауэр на компьютере — пропускать barphone.';
     }
-    return _pairAt(found.$1, p.port, p.code, [found.$1, ...p.hosts.where((h) => h != found.$1)]);
+    return _pairAt(found.$1, p.port, p.code, [found.$1, ...p.hosts.where((h) => h != found.$1)], pin: pin);
   }
 
   Future<String?> pairDiscovered(DiscoveredAgent a, String code) async {
@@ -226,9 +233,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     return _pairAt(host, port, code, [host]);
   }
 
-  Future<String?> _pairAt(String host, int port, String code, List<String> hosts) async {
+  Future<String?> _pairAt(String host, int port, String code, List<String> hosts, {Pin? pin}) async {
     try {
-      final r = await pair(host, port, code: code.trim(), deviceId: deviceId, deviceName: deviceName);
+      final r = await pair(host, port, code: code.trim(), deviceId: deviceId, deviceName: deviceName, pin: pin);
       final prev = _links[r.machine.id]?.machine;
       _saveMachine(
         SavedMachine(
@@ -242,6 +249,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
           lastHost: host,
           lastState: prev?.lastState,
           pinnedProfile: prev?.pinnedProfile,
+          // Paired over TLS: pinned for good. Without a QR fingerprint the agent tells it
+          // in its first state (and TLS is tried from then on).
+          fp: pin?.fp,
+          tlsOk: pin != null,
         ),
       );
       return null;

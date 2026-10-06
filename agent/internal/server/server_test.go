@@ -167,7 +167,10 @@ type env struct {
 	fake *fakeLauncher
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t, nil) }
+
+// newEnvWith lets a test adjust the server before it starts.
+func newEnvWith(t *testing.T, adjust func(*Server)) *env {
 	t.Helper()
 	// Not t.TempDir(): on Windows the antivirus briefly holds freshly written icons, and
 	// a failed cleanup would fail an otherwise green test. Best-effort removal instead.
@@ -212,6 +215,9 @@ func newEnv(t *testing.T) *env {
 		Addrs: func() []netinfo.Addr {
 			return []netinfo.Addr{{IP: "192.168.1.10", Iface: "Wi-Fi", MAC: "aa:bb:cc:dd:ee:ff"}}
 		},
+	}
+	if adjust != nil {
+		adjust(srv)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan struct{})

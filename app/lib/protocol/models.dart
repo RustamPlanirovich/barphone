@@ -166,8 +166,9 @@ class DeckState {
   final List<DeckProfile> profiles; // never empty; agents without profiles give one
   final String activeProfile; // chosen by the PC from the app in front
   final List<RecentEntry> recent;
+  final String? tlsFp; // the agent's certificate fingerprint, for phones paired without it
 
-  const DeckState({required this.machine, required this.profiles, required this.activeProfile, required this.recent});
+  const DeckState({required this.machine, required this.profiles, required this.activeProfile, required this.recent, this.tlsFp});
 
   factory DeckState.fromJson(Map<String, dynamic> j) {
     final deck = (j['deck'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -183,6 +184,7 @@ class DeckState {
       profiles: profiles,
       activeProfile: (j['activeProfile'] as String?) ?? profiles.first.id,
       recent: ((j['recent'] as List?) ?? const []).map((r) => RecentEntry.fromJson((r as Map).cast<String, dynamic>())).toList(),
+      tlsFp: ((j['tls'] as Map?)?['fp']) as String?,
     );
   }
 
@@ -235,6 +237,7 @@ class PairUri {
   final int port;
   final String code;
   final List<String> hosts;
+  final String? fp; // the agent's certificate fingerprint: pair over TLS
 
   const PairUri({
     required this.machineId,
@@ -243,6 +246,7 @@ class PairUri {
     required this.port,
     required this.code,
     required this.hosts,
+    this.fp,
   });
 
   static PairUri? parse(String raw) {
@@ -260,6 +264,7 @@ class PairUri {
       port: int.tryParse(q['port'] ?? '') ?? defaultPort,
       code: code,
       hosts: hosts,
+      fp: (q['fp'] ?? '').isEmpty ? null : q['fp'],
     );
   }
 }
@@ -276,6 +281,8 @@ class SavedMachine {
   final String? lastHost;
   final Map<String, dynamic>? lastState; // last `state` message, shown while offline
   final String? pinnedProfile; // profile chosen on the phone; null = follow the PC
+  final String? fp; // the agent's certificate fingerprint (TLS); null = plain only
+  final bool tlsOk; // TLS with [fp] has worked once: never fall back to plain again
 
   const SavedMachine({
     required this.id,
@@ -288,6 +295,8 @@ class SavedMachine {
     this.lastHost,
     this.lastState,
     this.pinnedProfile,
+    this.fp,
+    this.tlsOk = false,
   });
 
   /// [pinnedProfile] uses a record so that "unpin" (null) can be told from "unchanged".
@@ -300,6 +309,8 @@ class SavedMachine {
     String? lastHost,
     Map<String, dynamic>? lastState,
     (String?,)? pinnedProfile,
+    String? fp,
+    bool? tlsOk,
   }) => SavedMachine(
     id: id,
     name: name ?? this.name,
@@ -311,6 +322,8 @@ class SavedMachine {
     lastHost: lastHost ?? this.lastHost,
     lastState: lastState ?? this.lastState,
     pinnedProfile: pinnedProfile == null ? this.pinnedProfile : pinnedProfile.$1,
+    fp: fp ?? this.fp,
+    tlsOk: tlsOk ?? this.tlsOk,
   );
 
   /// Addresses to try, the last one that worked first.
@@ -331,6 +344,8 @@ class SavedMachine {
     lastHost: j['lastHost'] as String?,
     lastState: (j['lastState'] as Map?)?.cast<String, dynamic>(),
     pinnedProfile: j['pinnedProfile'] as String?,
+    fp: j['fp'] as String?,
+    tlsOk: j['tlsOk'] == true,
   );
 
   Map<String, dynamic> toJson() => {
@@ -344,5 +359,7 @@ class SavedMachine {
     if (lastHost != null) 'lastHost': lastHost,
     if (lastState != null) 'lastState': lastState,
     if (pinnedProfile != null) 'pinnedProfile': pinnedProfile,
+    if (fp != null) 'fp': fp,
+    if (tlsOk) 'tlsOk': true,
   };
 }

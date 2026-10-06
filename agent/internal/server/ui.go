@@ -164,6 +164,9 @@ func (s *Server) pairingInfo(cfg store.Config, addrs []netinfo.Addr) uiPairing {
 	q.Set("port", strconv.Itoa(s.LANPort))
 	q.Set("code", code)
 	q.Set("ip", strings.Join(netinfo.IPs(addrs), ","))
+	if s.TLSFingerprint != "" {
+		q.Set("fp", s.TLSFingerprint) // the phone pins it and pairs over TLS
+	}
 	uri := "barphone://pair?" + q.Encode()
 	p := uiPairing{Active: true, Code: code, ExpiresAt: expires, URI: uri}
 	if png, err := qrcode.Encode(uri, qrcode.Medium, 360); err == nil {

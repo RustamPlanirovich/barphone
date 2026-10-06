@@ -40,6 +40,7 @@ dependencies:
   wakelock_plus: ^1.8.1
   app_links: ^7.2.1
   device_info_plus: ^13.3.0
+  crypto: ^3.0.7
 dev_dependencies:
   flutter_test:
     sdk: flutter
