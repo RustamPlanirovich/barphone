@@ -44,6 +44,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
   DateTime? _downAt;
   int _fingers = 0; // most fingers down during the current touch
   double _travel = 0;
+  Offset _swipe = Offset.zero; // three fingers: their average travel
   bool _warned = false;
 
   final _text = TextEditingController(text: _sentinel);
@@ -75,6 +76,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
       _downAt = DateTime.now();
       _fingers = 0;
       _travel = 0;
+      _swipe = Offset.zero;
     }
     _touches[e.pointer] = e.localPosition;
     _fingers = max(_fingers, _touches.length);
@@ -86,6 +88,10 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
     _touches[e.pointer] = e.localPosition;
     final d = e.localPosition - prev;
     _travel += d.distance;
+    if (_fingers >= 3) {
+      _swipe += d / _touches.length.toDouble(); // a gesture, not a cursor or a wheel
+      return;
+    }
     if (_touches.length == 1 && _fingers == 1) {
       // Slow = precise, fast = far: the gain grows with the speed of the finger.
       _move += d * (1.6 + min(d.distance, 40) / 12);
@@ -98,6 +104,10 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
   void _up(PointerEvent e) {
     _touches.remove(e.pointer);
     if (_touches.isNotEmpty) return;
+    if (_fingers >= 3) {
+      _threeFingers();
+      return;
+    }
     final quick = _downAt != null && DateTime.now().difference(_downAt!) < _tapTime;
     if (quick && _travel < _tapSlop) _click(_fingers >= 2 ? 'right' : 'left');
   }
@@ -114,6 +124,20 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
     if (w != 0) {
       _link.scroll(_id, 0, w);
       _wheel -= w;
+    }
+  }
+
+  /// Three fingers, as on a laptop touchpad: left/right flips virtual desktops (finger
+  /// to the left = the next one), up shows all windows and desktops.
+  void _threeFingers() {
+    const far = 50.0;
+    final d = _swipe;
+    if (d.dx.abs() > far && d.dx.abs() > d.dy.abs()) {
+      HapticFeedback.selectionClick();
+      _link.desktop(_id, move: d.dx < 0 ? 1 : -1).then(_check);
+    } else if (d.dy < -far && d.dy.abs() > d.dx.abs()) {
+      HapticFeedback.selectionClick();
+      _link.desktop(_id, overview: true).then(_check);
     }
   }
 
@@ -209,7 +233,8 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
                     child: const Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        'Водите пальцем — курсор\nТап — щелчок · два пальца — прокрутка\nТап двумя пальцами — правый щелчок',
+                        'Водите пальцем — курсор\nТап — щелчок · два пальца — прокрутка\nТап двумя пальцами — правый щелчок\n'
+                        'Три пальца ← → — рабочие столы, ↑ — обзор',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: C.muted, height: 1.6),
                       ),

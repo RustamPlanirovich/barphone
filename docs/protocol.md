@@ -173,10 +173,13 @@ Authorization: Bearer <token>
 - `buttons[].icon` — хэш иконки или `null` (иконка ещё извлекается или её нет — придёт следующим `state`). Иконка не меняется, пока не меняется хэш → кэшировать навсегда.
 - `buttons[].glyph` — встроенная картинка для кнопок без иконки: `keys`, `text`, `folder`, `macro`, `timer`, `cpu`, `ram`, `trackpad`, `command` или id системного действия:
   `media_play_pause`, `media_next`, `media_prev`, `media_stop`, `volume`, `volume_up`, `volume_down`, `mute`,
-  `brightness`, `brightness_up`, `brightness_down`,
+  `brightness`, `brightness_up`, `brightness_down`, `desktops`, `desktop_next`, `desktop_prev`, `task_view`,
   `lock`, `sleep`, `display_off`, `shutdown`, `restart`. Неизвестное имя — показать букву.
 - `buttons[].control: "slider"` — кнопка-ползунок (громкость, яркость): тап — как обычно (громкость: вкл/выкл
   звук; яркость: ничего не меняет, только сообщает уровень), удержание и ведение пальцем — запросы `volume`.
+- `buttons[].control: "desktops"` — плитка виртуальных рабочих столов: свайп влево/вправо по плитке — запрос
+  `desktop` с `move` +1/−1, тап — `launch` (обзор всех окон и столов), удержание — список столов (`desktop` с `to`).
+  Что показывать на плитке — из сообщений `desktops`.
 - `buttons[].confirm: true` — перед нажатием спросить пользователя и прислать `launch` с `confirmed: true`
   (выключение, перезагрузка). Без этого агент отвечает `confirm_required` — так старое приложение,
   не знающее про подтверждение, не может выключить ПК одним тапом.
@@ -230,6 +233,16 @@ Authorization: Bearer <token>
 barphone-agent -notify "Упала: 3 ошибки" -title "Сборка" -level error
 curl -H "X-Barphone-UI: 1" -H "Content-Type: application/json" -d '{"title":"Сборка","text":"Готово"}' http://127.0.0.1:47801/api/notify
 ```
+
+**`desktops`** — виртуальные рабочие столы ПК, когда они меняются (пока на деке есть плитка `desktops`
+и телефон подключён; агент проверяет раз в секунду):
+
+```json
+{"type": "desktops", "count": 5, "current": 1, "names": ["", "Работа", "", "", ""]}
+```
+
+`current` — с нуля; пустое имя — стол не переименовывали (показывать «Рабочий стол N»). На macOS число столов
+не узнать — сообщения нет, плитка показывает только стрелки.
 
 **`stats`** — показатели ПК для плиток `stat`, раз в ~2 с, пока на деке есть такие плитки:
 
@@ -292,6 +305,21 @@ curl -H "X-Barphone-UI: 1" -H "Content-Type: application/json" -d '{"title":"С�
 Без `value` — прочитать, с `value` — установить (громкость при этом снимает «без звука»). Ответ:
 `action: "volume"`, `value`, у громкости ещё `muted`. Яркость (Windows): встроенный экран ноутбука и внешние
 мониторы с DDC/CI ставятся все сразу, читается первый найденный; на macOS — `unsupported`. Телефон шлёт не больше одного запроса одновременно, промежуточные значения пропускает.
+
+**`desktop`** — виртуальные рабочие столы (с `id` системной кнопки `desktops` или кнопки `trackpad`):
+
+```json
+{"type": "desktop", "req": "r40", "id": "b_vd", "move": 1}
+{"type": "desktop", "req": "r41", "id": "b_vd", "to": 3}
+{"type": "desktop", "req": "r42", "id": "b_tp", "overview": true}
+{"type": "desktop", "req": "r43", "id": "b_vd"}
+```
+
+`move` — на столько столов вправо (+) или влево (−), `to` — на стол с этим номером (с нуля), `overview` — обзор
+(Windows: Win+Tab, macOS: Mission Control), без полей — только прочитать. Ответ `action: "desktop"` и
+`desktops: {count, current, names}` (после переключения — ожидаемое состояние; настоящее придёт в `desktops`).
+Windows переключает столы сочетанием Win+Ctrl+←/→ (у системы нет публичного API для этого), список и текущий
+стол агент читает из реестра. macOS: Ctrl+←/→ (стандартные сочетания «Перейти в пространство»), без `desktops`.
 
 **Трекпад** (только с `id` кнопки `kind: "trackpad"`):
 

@@ -54,6 +54,10 @@ type Launcher interface {
 	MovePointer(dx, dy int) error
 	Click(button string, double bool) error
 	Scroll(dx, dy int) error
+	// Virtual desktops: what there are (ErrUnsupported where the OS does not tell) and
+	// moving steps to the right (+) or left (-).
+	Desktops() (DesktopInfo, error)
+	MoveDesktop(steps int) error
 	// AppKeys lists the foreground keys (see ForegroundApp) an app/path button stands
 	// for, so a profile can be bound to that app. Nil if it cannot tell.
 	AppKeys(b store.Button) []string

@@ -8,6 +8,7 @@ import '../protocol/models.dart';
 import '../timers.dart';
 import 'glyphs.dart';
 import 'theme.dart';
+import 'desktops.dart';
 import 'trackpad.dart';
 import 'volume_slider.dart';
 import 'window_chooser.dart';
@@ -237,6 +238,7 @@ class DeckTile extends StatefulWidget {
 
 class _DeckTileState extends State<DeckTile> {
   bool _down = false;
+  double _swipe = 0; // horizontal travel on the desktops tile
   Color? _flash;
   Timer? _flashTimer;
   VolumeDrag? _drag;
@@ -247,6 +249,20 @@ class _DeckTileState extends State<DeckTile> {
     _flashTimer?.cancel();
     _flashTimer = Timer(const Duration(milliseconds: 450), () {
       if (mounted) setState(() => _flash = null);
+    });
+  }
+
+  /// A swipe on the desktops tile: finger to the left = the next desktop, like pages.
+  void _swiped(double velocity) {
+    final far = _swipe.abs() > widget.size * .15 || velocity.abs() > 300;
+    if (!far) return;
+    final dir = (_swipe != 0 ? _swipe : velocity) < 0 ? 1 : -1;
+    final known = widget.link.desktops.value;
+    final atEdge = known != null && (known.current + dir < 0 || known.current + dir >= known.count);
+    atEdge ? HapticFeedback.heavyImpact() : HapticFeedback.selectionClick();
+    if (atEdge) return;
+    widget.link.desktop(widget.button.id, move: dir).then((r) {
+      if (!r.ok && mounted) showPressError(context, widget.button, r.error);
     });
   }
 
@@ -284,8 +300,19 @@ class _DeckTileState extends State<DeckTile> {
             : b.isTrackpad
             ? () => openTrackpad(context, widget.link, b)
             : () => pressButton(context, widget.link, b, _setFlash),
-        // Long press: app buttons offer their open windows, the volume button turns into a slider.
-        onLongPress: widget.enabled && b.launchesApp ? () => showButtonWindows(context, widget.link, b, _setFlash) : null,
+        // Long press: app buttons offer their open windows, the volume button turns into a
+        // slider, the desktops tile lists the desktops.
+        onLongPress: !widget.enabled
+            ? null
+            : b.launchesApp
+            ? () => showButtonWindows(context, widget.link, b, _setFlash)
+            : b.isDesktops
+            ? () => showDesktopChooser(context, widget.link, b)
+            : null,
+        // The desktops tile flips desktops with a swipe (it wins over the deck's paging).
+        onHorizontalDragStart: widget.enabled && b.isDesktops ? (_) => _swipe = 0 : null,
+        onHorizontalDragUpdate: widget.enabled && b.isDesktops ? (d) => _swipe += d.delta.dx : null,
+        onHorizontalDragEnd: widget.enabled && b.isDesktops ? (d) => _swiped(d.primaryVelocity ?? 0) : null,
         onLongPressStart: widget.enabled && b.isSlider ? (_) => (_drag = VolumeDrag(context, widget.link, b)).start() : null,
         onLongPressMoveUpdate: b.isSlider ? (d) => _drag?.move(d.offsetFromOrigin) : null,
         onLongPressEnd: b.isSlider
@@ -318,6 +345,8 @@ class _DeckTileState extends State<DeckTile> {
                           ? _Countdown(button: b, link: widget.link, timers: widget.timers!, size: s)
                           : b.isStat
                           ? _LiveValue(button: b, link: widget.link, size: s)
+                          : b.isDesktops
+                          ? DesktopsFace(button: b, link: widget.link, size: s)
                           : ButtonIcon(button: b, link: widget.link, size: s * .5),
                     ),
                   ),

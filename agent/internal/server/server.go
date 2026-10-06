@@ -100,6 +100,7 @@ func (s *Server) Run(ctx context.Context) {
 		s.iconWorker(ctx)
 	}()
 	go s.statsLoop(ctx)
+	go s.desktopsLoop(ctx)
 	s.wakeIcons()
 	var last []byte
 	for {
@@ -251,8 +252,11 @@ func wireButtons(buttons []store.Button) []wireButton {
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
 				wb.Confirm = a.Confirm
-				if a.Slider {
+				switch {
+				case a.Slider:
 					wb.Control = "slider"
+				case a.Swipe:
+					wb.Control = "desktops"
 				}
 			}
 		}

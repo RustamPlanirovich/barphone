@@ -141,6 +141,11 @@ type inbound struct {
 	Confirmed bool     `json:"confirmed"` // launch: the user confirmed a dangerous action
 	Value     *float64 `json:"value"`     // volume: level to set (0..1); absent = just read
 
+	// Virtual desktops (see desktopMsg).
+	Move     int  `json:"move"`
+	To       *int `json:"to"`
+	Overview bool `json:"overview"`
+
 	// Trackpad input (see remoteInput).
 	DX     int    `json:"dx"`
 	DY     int    `json:"dy"`
@@ -170,6 +175,8 @@ type resultMsg struct {
 	Windows []launch.Window `json:"windows,omitzero"`
 	Value   *float64        `json:"value,omitempty"` // volume level 0..1
 	Muted   *bool           `json:"muted,omitempty"`
+	// Desktops: the virtual desktops after a "desktop" request.
+	Desktops *launch.DesktopInfo `json:"desktops,omitempty"`
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +243,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		switch msg.Type {
 		case "launch", "focus", "windows", "volume", "minimize":
 			c.queue(mustJSON(s.pressButton(msg, canChoose)))
+		case "desktop":
+			c.queue(mustJSON(s.desktopMsg(msg)))
 		case "pointer", "scroll", "click", "type", "key":
 			if res, answer := s.remoteInput(msg); answer {
 				c.queue(mustJSON(res))

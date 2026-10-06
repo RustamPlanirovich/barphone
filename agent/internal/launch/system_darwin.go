@@ -78,6 +78,12 @@ func (m macLauncher) runSystem(id string) error {
 				step = -step
 			}
 			return m.SetVolume(st.Level + step)
+		case "desktop_next":
+			return m.MoveDesktop(1)
+		case "desktop_prev":
+			return m.MoveDesktop(-1)
+		case "task_view", "desktops": // Mission Control
+			return osascript(`tell application "System Events" to key code 126 using {control down}`)
 		case "lock":
 			return osascript(`tell application "System Events" to keystroke "q" using {control down, command down}`)
 		case "sleep":
@@ -99,6 +105,23 @@ func (m macLauncher) runSystem(id string) error {
 		return nil
 	}
 	return do()
+}
+
+// Spaces: macOS does not tell how many there are; switching is Ctrl+Left/Right (the
+// standard "Move left/right a space" shortcuts).
+func (macLauncher) Desktops() (DesktopInfo, error) { return DesktopInfo{}, ErrUnsupported }
+
+func (macLauncher) MoveDesktop(steps int) error {
+	code := 124 // right
+	if steps < 0 {
+		code, steps = 123, -steps
+	}
+	for i := 0; i < steps; i++ {
+		if err := osascript(`tell application "System Events" to key code ` + strconv.Itoa(code) + ` using {control down}`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // The mouse needs CGEvent (cgo); typing goes through System Events as for buttons.

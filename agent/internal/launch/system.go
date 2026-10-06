@@ -8,6 +8,7 @@ type SystemAction struct {
 	Title   string `json:"title"`
 	Confirm bool   `json:"confirm,omitempty"` // phone must ask before pressing
 	Slider  bool   `json:"slider,omitempty"`  // hold and drag to set a level
+	Swipe   bool   `json:"swipe,omitempty"`   // the virtual desktops tile: swipe to switch
 	// Deferred actions run shortly after the press is answered: the PC may lock, sleep
 	// or switch off right away, and the phone should still see the result.
 	Deferred bool `json:"-"`
@@ -25,6 +26,10 @@ var SystemActions = []SystemAction{
 	{ID: "brightness", Title: "Яркость", Slider: true},
 	{ID: "brightness_up", Title: "Ярче"},
 	{ID: "brightness_down", Title: "Темнее"},
+	{ID: "desktops", Title: "Рабочие столы", Swipe: true},
+	{ID: "desktop_next", Title: "Следующий рабочий стол"},
+	{ID: "desktop_prev", Title: "Предыдущий рабочий стол"},
+	{ID: "task_view", Title: "Обзор окон и столов"},
 	{ID: "lock", Title: "Заблокировать", Deferred: true},
 	{ID: "sleep", Title: "Сон", Deferred: true},
 	{ID: "display_off", Title: "Выключить экран", Deferred: true},
@@ -39,6 +44,13 @@ func LookupSystemAction(id string) (SystemAction, bool) {
 		}
 	}
 	return SystemAction{}, false
+}
+
+// DesktopInfo describes the virtual desktops of the PC for the phone's tile.
+type DesktopInfo struct {
+	Count   int      `json:"count"`
+	Current int      `json:"current"` // from 0
+	Names   []string `json:"names"`   // "" = not renamed
 }
 
 // VolumeState is the PC's master output volume.

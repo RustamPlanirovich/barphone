@@ -61,6 +61,7 @@ const GLYPH = {
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   brightness: '🔆', brightness_up: '☀️', brightness_down: '🔅',
+  desktops: '🗂️', desktop_next: '⏩', desktop_prev: '⏪', task_view: '🪟',
   lock: '🔒', sleep: '🌙', display_off: '🖥️', shutdown: '🔌', restart: '🔄',
 };
 const glyphOf = (b) => (b.kind === 'system' || b.kind === 'stat' ? GLYPH[b.target] : GLYPH[b.kind]);
@@ -812,6 +813,7 @@ function renderSystemList() {
     h('span', { class: 'name' }, a.title),
     a.slider ? h('span', { class: 'hint' }, a.id === 'volume' ? 'тап — без звука, удержание — ползунок' : 'удержание — ползунок') : null,
     a.id.startsWith('brightness') ? h('span', { class: 'hint' }, 'Windows: экран ноутбука и мониторы с DDC/CI') : null,
+    a.swipe ? h('span', { class: 'hint' }, 'свайп по плитке — соседний стол, тап — обзор, удержание — список') : null,
     a.confirm ? h('span', { class: 'hint' }, 'спросит подтверждение') : null,
     added.has(a.id) ? h('span', { class: 'added' }, '✓ на деке') : null,
   )));
@@ -866,7 +868,8 @@ function openEdit(id) {
     (action && action.slider ? (action.id === 'volume'
       ? ' · на телефоне: тап — без звука, удержание и ведение пальцем — громкость'
       : ' · на телефоне: удержание и ведение пальцем — уровень') : '') +
-    (action && action.confirm ? ' · телефон спросит подтверждение' : '');
+    (action && action.confirm ? ' · телефон спросит подтверждение' : '') +
+    (action && action.swipe ? ' · на телефоне: свайп по плитке — соседний рабочий стол, тап — обзор, удержание — список столов' : '');
   const del = $('#editDelete');
   delete del.dataset.armed;
   del.textContent = b.kind === 'folder' ? 'Удалить папку' : 'Удалить';

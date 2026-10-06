@@ -51,6 +51,9 @@ class DeckButton {
   bool get launchesApp => kind == 'app' || kind == 'path';
   bool get isSlider => control == 'slider';
 
+  /// The virtual desktops tile: swipe to switch, tap for the overview, hold for the list.
+  bool get isDesktops => control == 'desktops';
+
   /// Opens on the phone, showing its own buttons; the agent is not asked.
   bool get isFolder => kind == 'folder';
 
@@ -88,6 +91,25 @@ class DeckButton {
     if (seconds != null) 'seconds': seconds,
     if (stat != null) 'stat': stat,
   };
+}
+
+/// The PC's virtual desktops ("desktops" message, "desktop" answers).
+class DesktopInfo {
+  final int count;
+  final int current; // from 0
+  final List<String> names; // "" = not renamed
+
+  const DesktopInfo({required this.count, required this.current, this.names = const []});
+
+  factory DesktopInfo.fromJson(Map<String, dynamic> j) => DesktopInfo(
+    count: ((j['count'] as num?) ?? 1).toInt(),
+    current: ((j['current'] as num?) ?? 0).toInt(),
+    names: ((j['names'] as List?) ?? const []).map((n) => (n as String?) ?? '').toList(),
+  );
+
+  String name(int i) => i < names.length && names[i].isNotEmpty ? names[i] : 'Рабочий стол ${i + 1}';
+
+  DesktopInfo moved(int steps) => DesktopInfo(count: count, current: (current + steps).clamp(0, count - 1), names: names);
 }
 
 /// A message from the PC ("notify"): a command finished, or a script said something.

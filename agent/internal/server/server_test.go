@@ -41,6 +41,8 @@ type fakeLauncher struct {
 	bright    float64
 	input     []string // trackpad: "move 3,-2", "click right", "scroll 0,120"
 	commands  []string // command buttons run: "target @ dir"
+	desktops  launch.DesktopInfo
+	moves     []int // MoveDesktop calls
 }
 
 func (f *fakeLauncher) Launch(b store.Button) error {
@@ -113,6 +115,23 @@ func (f *fakeLauncher) Minimize(b store.Button, id string) error {
 	return nil
 }
 func (f *fakeLauncher) OpenURL(string) error { return nil }
+func (f *fakeLauncher) Desktops() (launch.DesktopInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.desktops.Count == 0 {
+		return launch.DesktopInfo{}, launch.ErrUnsupported
+	}
+	return f.desktops, nil
+}
+func (f *fakeLauncher) MoveDesktop(steps int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.moves = append(f.moves, steps)
+	if f.desktops.Count > 0 { // like Windows: no wrapping around
+		f.desktops.Current = min(max(f.desktops.Current+steps, 0), f.desktops.Count-1)
+	}
+	return nil
+}
 func (f *fakeLauncher) MovePointer(dx, dy int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

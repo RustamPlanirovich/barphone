@@ -29,8 +29,9 @@ class LaunchResult {
   final List<AppWindow> windows;
   final double? value; // volume level 0..1
   final bool? muted;
-  const LaunchResult.ok({this.action, this.windows = const [], this.value, this.muted}) : ok = true, error = null;
-  const LaunchResult.fail(this.error) : ok = false, action = null, windows = const [], value = null, muted = null;
+  final DesktopInfo? desktops; // after a "desktop" request
+  const LaunchResult.ok({this.action, this.windows = const [], this.value, this.muted, this.desktops}) : ok = true, error = null;
+  const LaunchResult.fail(this.error) : ok = false, action = null, windows = const [], value = null, muted = null, desktops = null;
 
   /// Several windows are open: the user has to pick one (or start a new instance).
   bool get needsChoice => ok && (action == 'choose' || action == 'windows');
@@ -45,6 +46,7 @@ class LaunchResult {
       ],
       value: (m['value'] as num?)?.toDouble(),
       muted: m['muted'] as bool?,
+      desktops: m['desktops'] is Map ? DesktopInfo.fromJson((m['desktops'] as Map).cast<String, dynamic>()) : null,
     );
   }
 }
@@ -76,6 +78,9 @@ class MachineLink {
 
   /// Latest numbers for live tiles; only those tiles listen (it changes every ~2 s).
   final stats = ValueNotifier<SysStats?>(null);
+
+  /// The PC's virtual desktops, for the desktops tile (null: not known, e.g. a Mac).
+  final desktops = ValueNotifier<DesktopInfo?>(null);
   String? host;
 
   /// The current connection is TLS (pictures then come over HTTPS too).
@@ -283,6 +288,10 @@ class MachineLink {
         try {
           onNotice?.call(AgentNotice.fromJson(_machine.name, msg));
         } catch (_) {}
+      case 'desktops':
+        try {
+          desktops.value = DesktopInfo.fromJson(msg);
+        } catch (_) {}
       case 'stats':
         try {
           stats.value = SysStats.fromJson(msg);
@@ -313,6 +322,19 @@ class MachineLink {
 
   /// Minimizes one window of the button's app, or all of them without [windowId].
   Future<LaunchResult> minimize(String buttonId, [String? windowId]) => _request({'type': 'minimize', 'id': buttonId, 'window': ?windowId});
+
+  /// Virtual desktops through the desktops tile or the trackpad: [move] right (+) or left
+  /// (-), [to] a desktop (from 0), or the [overview]. The tile shows the expected desktop
+  /// at once; the answer and later "desktops" messages correct it.
+  Future<LaunchResult> desktop(String buttonId, {int? move, int? to, bool overview = false}) async {
+    final known = desktops.value;
+    if (known != null && move != null) desktops.value = known.moved(move);
+    if (known != null && to != null) desktops.value = known.moved(to - known.current);
+    final r = await _request({'type': 'desktop', 'id': buttonId, 'move': ?move, 'to': ?to, if (overview) 'overview': true});
+    if (r.desktops != null) desktops.value = r.desktops;
+    if (!r.ok) desktops.value = known;
+    return r;
+  }
 
   // ---- trackpad (only on behalf of a "trackpad" button; see docs/protocol.md) ----
 

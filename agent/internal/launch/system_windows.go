@@ -63,6 +63,12 @@ func (w *winLauncher) runSystem(id string) error {
 		case "brightness", "brightness_up", "brightness_down":
 			err, _ := brightnessAction(w, id)
 			return err
+		case "desktop_next":
+			return w.MoveDesktop(1)
+		case "desktop_prev":
+			return w.MoveDesktop(-1)
+		case "task_view", "desktops": // a tap on the desktops tile shows them all
+			return sendCombo(Combo{Win: true, Key: "Tab"})
 		case "volume": // tap on the slider button toggles mute
 			return w.launchThread.do(func() error {
 				return withVolume(func(v unsafe.Pointer, vt *[16]uintptr) error {

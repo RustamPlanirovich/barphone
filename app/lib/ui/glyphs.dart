@@ -27,6 +27,10 @@ const _glyphs = <String, (IconData, Color)>{
   'cpu': (Icons.speed_rounded, Color(0xFF4F7CFF)),
   'trackpad': (Icons.mouse_rounded, Color(0xFF5FA8FF)),
   'command': (Icons.terminal_rounded, Color(0xFF2EB8A6)),
+  'desktops': (Icons.view_carousel_rounded, Color(0xFF4F7CFF)),
+  'desktop_next': (Icons.keyboard_double_arrow_right_rounded, Color(0xFF4F7CFF)),
+  'desktop_prev': (Icons.keyboard_double_arrow_left_rounded, Color(0xFF4F7CFF)),
+  'task_view': (Icons.grid_view_rounded, Color(0xFF4F7CFF)),
   'ram': (Icons.memory_rounded, Color(0xFF8E6BFF)),
 };
 
