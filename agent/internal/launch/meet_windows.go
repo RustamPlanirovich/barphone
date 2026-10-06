@@ -77,6 +77,9 @@ var meetKeys = map[string]Combo{
 	"mic":    {Ctrl: true, Key: "D"},
 	"camera": {Ctrl: true, Key: "E"},
 	"hand":   {Ctrl: true, Alt: true, Key: "H"},
+	// Meet has no shortcut to leave: closing its tab (the one in front in that window, as
+	// the title says) ends the call.
+	"leave": {Ctrl: true, Key: "W"},
 }
 
 // CallAction brings the Meet window up for a moment, presses the shortcut and puts the

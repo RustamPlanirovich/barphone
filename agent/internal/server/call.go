@@ -53,7 +53,7 @@ func (s *Server) callLoop(ctx context.Context) {
 	}
 }
 
-// callAction is the phone's call panel: microphone, camera, raise hand, show Meet.
+// callAction is the phone's call panel: microphone, camera, raise hand, show Meet, leave.
 func (s *Server) callAction(msg inbound) resultMsg {
 	res := resultMsg{Type: "result", Req: msg.Req}
 	if cfg := s.Store.Snapshot(); cfg.NoMeetControls {
@@ -61,7 +61,7 @@ func (s *Server) callAction(msg inbound) resultMsg {
 		return res
 	}
 	switch msg.Action {
-	case "mic", "camera", "hand", "show":
+	case "mic", "camera", "hand", "show", "leave":
 	default:
 		res.Error = "bad_request"
 		return res

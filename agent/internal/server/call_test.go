@@ -44,6 +44,9 @@ func TestMeetCallPanel(t *testing.T) {
 	}
 	for c := readMsg(t, ws, "call"); c["camera"] != false; c = readMsg(t, ws, "call") {
 	}
+	if r := send(map[string]any{"type": "call", "req": "6", "action": "leave"}); r["ok"] != true {
+		t.Fatalf("leave: %v", r)
+	}
 	if r := send(map[string]any{"type": "call", "req": "2", "action": "explode"}); r["error"] != "bad_request" {
 		t.Fatalf("unknown action: %v", r)
 	}
@@ -76,7 +79,7 @@ func TestMeetCallPanel(t *testing.T) {
 	if r := send(map[string]any{"type": "call", "req": "5", "action": "mic"}); r["error"] != "not_found" {
 		t.Fatalf("no call: %v", r)
 	}
-	if calls != "camera" {
+	if calls != "camera,leave" {
 		t.Fatalf("calls: %s", calls)
 	}
 }

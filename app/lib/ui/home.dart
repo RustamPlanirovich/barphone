@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../protocol/layout.dart';
 import '../protocol/link.dart';
 import '../protocol/models.dart';
 import '../state.dart';
@@ -131,14 +132,47 @@ class _HomeScreenState extends State<HomeScreen> {
     if (other == null) {
       final single = DeckPage(app: widget.app, link: active, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd);
       if (!landscape) return single;
-      // One computer and a Meet call on it: its controls take the second half.
+      // One computer and a Meet call on it: a strip of call controls, one tile wide, next
+      // to the deck (which gives up about one column).
       return ValueListenableBuilder<CallInfo?>(
         valueListenable: active.call,
-        builder: (context, call, _) =>
-            call == null || !active.present ? single : _split(half(active), Expanded(child: CallPanel(link: active))),
+        builder: (context, call, _) => call == null || !active.present ? single : _withCallStrip(active, half(active)),
       );
     }
     return _split(half(active), half(other));
+  }
+
+  /// Height of a deck's header (machine name, profile chip) above its grid.
+  static const _deckHeader = 48.0;
+
+  Widget _withCallStrip(MachineLink active, Widget deck) {
+    return SafeArea(
+      child: Column(
+        children: [
+          const SwipeHint(label: 'компьютеры', up: false),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final columns = active.state?.shown(active.machine.pinnedProfile).columns ?? 3;
+                final tile = computeGrid(10000, box.maxHeight - _deckHeader, columns, landscape: true).tile;
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    deck,
+                    Container(width: 1, margin: const EdgeInsets.symmetric(vertical: 12), color: C.border),
+                    SizedBox(
+                      width: (tile + 16).clamp(72.0, 160.0),
+                      child: CallPanel(link: active),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          const DeckFooter(),
+        ],
+      ),
+    );
   }
 
   /// Two halves side by side with the swipe hints shared.

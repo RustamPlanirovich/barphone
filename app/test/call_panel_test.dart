@@ -5,6 +5,7 @@ import 'package:barphone/ui/call_panel.dart';
 import 'package:barphone/ui/deck_page.dart';
 import 'package:barphone/ui/home.dart';
 import 'package:barphone/ui/theme.dart';
+import 'package:barphone/ui/tile.dart';
 import 'package:barphone/ui/window_chooser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -71,7 +72,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('one computer in a Meet call: its controls take the second half', (tester) async {
+  testWidgets('one computer in a Meet call: a strip one tile wide next to the deck, five controls', (tester) async {
     final pc = _Link('m', 'ПК')..status = LinkStatus.online;
     await show(tester, _App(pc), const Size(890, 410));
     expect(find.byType(CallPanel), findsNothing);
@@ -80,20 +81,38 @@ void main() {
     pc.call.value = const CallInfo(active: true, camera: true);
     await tester.pumpAndSettle();
     expect(find.byType(CallPanel), findsOneWidget);
-    expect(find.text('Google Meet · ПК'), findsOneWidget);
-    expect(find.text('Почта ПК'), findsOneWidget, reason: 'the deck keeps the left half');
-    expect(tester.getCenter(find.text('Почта ПК')).dx, lessThan(445));
-    expect(tester.getCenter(find.text('Микрофон')).dx, greaterThan(445));
+    final strip = tester.getRect(find.byType(CallPanel));
+    final tile = tester.getRect(find.byType(DeckTile).first);
+    expect(strip.width, closeTo(tile.width + 16, 10), reason: 'one tile wide (the deck may shrink its tiles a little to fit)');
+    expect(strip.right, closeTo(890, 1));
+    expect(tester.getCenter(find.text('Почта ПК')).dx, lessThan(strip.left), reason: 'the deck keeps the rest');
+    final labels = ['Микрофон', 'Камера вкл', 'Рука', 'Открыть', 'Выйти'];
+    final ys = [for (final l in labels) tester.getCenter(find.text(l)).dy];
+    expect(ys, orderedEquals([...ys]..sort()), reason: 'stacked top to bottom');
 
-    await tester.tap(find.text('Камера включена'));
+    await tester.tap(find.text('Камера вкл'));
     await tester.tap(find.text('Микрофон'));
-    await tester.tap(find.text('Поднять руку'));
+    await tester.tap(find.text('Рука'));
+    await tester.tap(find.text('Открыть'));
     await tester.pump();
-    expect(pc.actions, ['camera', 'mic', 'hand']);
+    expect(pc.actions, ['camera', 'mic', 'hand', 'show']);
+
+    // Leaving asks first.
+    await tester.tap(find.text('Выйти'));
+    await tester.pumpAndSettle();
+    expect(find.text('Выйти из звонка?'), findsOneWidget);
+    await tester.tap(find.text('Остаться'));
+    await tester.pumpAndSettle();
+    expect(pc.actions, hasLength(4));
+    await tester.tap(find.text('Выйти'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Выйти'));
+    await tester.pumpAndSettle();
+    expect(pc.actions.last, 'leave');
 
     pc.call.value = const CallInfo(active: true, camera: false);
     await tester.pump();
-    expect(find.text('Камера выключена'), findsOneWidget);
+    expect(find.text('Камера выкл'), findsOneWidget);
 
     pc.fail = 'not_found';
     await tester.tap(find.text('Микрофон'));

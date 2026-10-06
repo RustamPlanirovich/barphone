@@ -5,14 +5,15 @@ import '../protocol/link.dart';
 import '../protocol/models.dart';
 import 'theme.dart';
 
-/// Controls of a Google Meet call on the PC, in the second half of a landscape screen
-/// when only one computer is connected. Whether the microphone is on cannot be known
+/// Controls of a Google Meet call on the PC: a narrow strip (one tile wide) next to the
+/// deck when only one computer is connected. Whether the microphone is on cannot be known
 /// (Meet keeps it open while muted), so that button is a plain toggle; the camera is.
 class CallPanel extends StatelessWidget {
   const CallPanel({super.key, required this.link});
   final MachineLink link;
 
   Future<void> _do(BuildContext context, String action) async {
+    if (action == 'leave' && !await _confirmLeave(context)) return;
     HapticFeedback.mediumImpact();
     final r = await link.callAction(action);
     if (r.ok || !context.mounted) return;
@@ -26,66 +27,69 @@ class CallPanel extends StatelessWidget {
       ..showSnackBar(SnackBar(content: Text(why), duration: const Duration(seconds: 3)));
   }
 
+  Future<bool> _confirmLeave(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Выйти из звонка?'),
+        content: Text('Вкладка Meet на «${link.machine.name}» закроется.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Остаться')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: C.danger, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Выйти'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<CallInfo?>(
       valueListenable: link.call,
       builder: (context, call, _) {
         final camera = call?.camera ?? false;
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 12, 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.video_call_rounded, color: C.ok, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Google Meet · ${link.machine.name}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
+        final buttons = [
+          _CallButton(icon: Icons.mic_rounded, label: 'Микрофон', onTap: () => _do(context, 'mic')),
+          _CallButton(
+            icon: camera ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+            label: camera ? 'Камера вкл' : 'Камера выкл',
+            color: camera ? C.ok : C.muted,
+            onTap: () => _do(context, 'camera'),
+          ),
+          _CallButton(icon: Icons.back_hand_rounded, label: 'Рука', onTap: () => _do(context, 'hand')),
+          _CallButton(icon: Icons.open_in_new_rounded, label: 'Открыть', onTap: () => _do(context, 'show')),
+          _CallButton(icon: Icons.call_end_rounded, label: 'Выйти', color: C.danger, onTap: () => _do(context, 'leave')),
+        ];
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          _CallButton(icon: Icons.mic_rounded, label: 'Микрофон', hint: 'вкл / выкл', onTap: () => _do(context, 'mic')),
-                          const SizedBox(width: 12),
-                          _CallButton(
-                            icon: camera ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-                            label: camera ? 'Камера включена' : 'Камера выключена',
-                            hint: camera ? 'тап — выключить' : 'тап — включить',
-                            color: camera ? C.ok : C.danger,
-                            onTap: () => _do(context, 'camera'),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          _CallButton(icon: Icons.back_hand_rounded, label: 'Поднять руку', onTap: () => _do(context, 'hand')),
-                          const SizedBox(width: 12),
-                          _CallButton(icon: Icons.open_in_new_rounded, label: 'Открыть Meet', onTap: () => _do(context, 'show')),
-                        ],
+                    Icon(Icons.video_call_rounded, color: C.ok, size: 18),
+                    SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Meet',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: C.ok),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+              for (final (i, b) in buttons.indexed) ...[if (i > 0) const SizedBox(height: 6), Expanded(child: b)],
+            ],
+          ),
         );
       },
     );
@@ -93,39 +97,42 @@ class CallPanel extends StatelessWidget {
 }
 
 class _CallButton extends StatelessWidget {
-  const _CallButton({required this.icon, required this.label, required this.onTap, this.hint, this.color});
+  const _CallButton({required this.icon, required this.label, required this.onTap, this.color});
   final IconData icon;
   final String label;
-  final String? hint;
   final Color? color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = color ?? C.accent;
-    return Expanded(
+    return Semantics(
+      button: true,
+      label: label,
       child: Material(
         color: C.tile,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: LayoutBuilder(
             builder: (context, box) {
-              final s = box.biggest.shortestSide;
-              return Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: (s * .38).clamp(24.0, 56.0), color: c),
-                  SizedBox(height: s * .05),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  if (hint != null) Text(hint!, style: const TextStyle(color: C.muted, fontSize: 12)),
-                ],
+              final h = box.maxHeight;
+              final withLabel = h >= 44; // too short: the icon alone
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: (h * (withLabel ? .42 : .6)).clamp(16.0, 30.0), color: c),
+                    if (withLabel)
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, color: C.muted, height: 1.2),
+                      ),
+                  ],
+                ),
               );
             },
           ),
