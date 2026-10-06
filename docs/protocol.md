@@ -147,22 +147,25 @@ Authorization: Bearer <token>
   Ссылается на `buttons[].id`; удалённые кнопки агент из `recent` выкидывает сам.
 - `machine.macs` — MAC-адреса физических адаптеров для Wake-on-LAN. Поле может отсутствовать.
 
-**`result`** — ответ на `launch` / `focus` / `windows`:
+**`result`** — ответ на `launch` / `focus` / `windows` / `minimize` / `volume`:
 
 ```json
 {"type": "result", "req": "r17", "ok": true, "action": "launched"}
 {"type": "result", "req": "r17", "ok": true, "action": "focused"}
+{"type": "result", "req": "r17", "ok": true, "action": "minimized"}
 {"type": "result", "req": "r17", "ok": true, "action": "choose",
- "windows": [{"id": "919836", "title": "barphone"}, {"id": "1247566", "title": "AOv5"}]}
+ "windows": [{"id": "919836", "title": "barphone", "active": true}, {"id": "1247566", "title": "AOv5"}]}
 {"type": "result", "req": "r18", "ok": false, "error": "not_found"}
 ```
 
 - `action`: `launched` — запущено; `focused` — открытое окно выведено вперёд;
+  `minimized` — окно приложения было впереди и свёрнуто (повторное нажатие) или ответ на `minimize`;
   `choose` — у приложения открыто несколько окон, ничего не сделано, телефон показывает выбор;
   `windows` — ответ на запрос `windows`; `done` — выполнена кнопка `keys`/`text`/`system`;
   `volume` — ответ на запрос `volume`. Старые агенты `action` не присылают — считать `launched`.
 - `windows` — окна приложения кнопки, сверху самое недавнее активное; общий хвост заголовков
-  (« - Visual Studio Code») агент уже отрезал. `id` непрозрачный, годится только для `focus`.
+  (« - Visual Studio Code») агент уже отрезал. `id` непрозрачный, годится только для `focus`/`minimize`.
+  `active: true` — это окно сейчас впереди на ПК и не свёрнуто (у остальных поле отсутствует).
 - `value` (0..1) и `muted` — громкость ПК: в ответе на `volume` и на тап по кнопке-ползунку
   (тап переключает «без звука», телефон показывает новое состояние).
 - `error`: `not_found` (нет такой кнопки), `launch_failed` (ОС не смогла запустить),
@@ -183,7 +186,8 @@ Authorization: Bearer <token>
 
 Кнопки `keys` и `text` нажимают клавиши / вводят текст в окно, активное на ПК в этот момент.
 
-Без `new`: окон приложения нет → запуск; одно → переключение на него; несколько → `choose`.
+Без `new`: окон приложения нет → запуск; одно → переключение на него, а если оно уже впереди —
+сворачивание (`minimized`), так кнопка работает как переключатель; несколько → `choose`.
 С `new: true` (или если у кнопки на ПК выбрано «Всегда запускать новое») — всегда новый запуск.
 `req` — произвольная строка от телефона, возвращается в `result`.
 
@@ -204,6 +208,15 @@ Authorization: Bearer <token>
 Ответ всегда с массивом `windows` (возможно пустым). Поиск окон есть только на Windows:
 на macOS список пуст, а `open -a` и так выводит запущенное приложение вперёд.
 
+**`minimize`** — свернуть окно из списка `choose`/`windows` или, без `window`, все окна приложения:
+
+```json
+{"type": "minimize", "req": "r25", "id": "b_k3j2", "window": "919836"}
+{"type": "minimize", "req": "r26", "id": "b_k3j2"}
+```
+
+Ответ `action: "minimized"`; `window_gone`, если сворачивать нечего; `unsupported` на macOS.
+
 **`volume`** — громкость через кнопку-ползунок (только кнопки с `control: "slider"`):
 
 ```json
@@ -214,7 +227,8 @@ Authorization: Bearer <token>
 Без `value` — прочитать, с `value` — установить (и снять «без звука»). Ответ: `action: "volume"`,
 `value`, `muted`. Телефон шлёт не больше одного запроса одновременно, промежуточные значения пропускает.
 
-`recent` пополняется при `launched`, `focused` и `done`; `choose`, `windows` и `volume` историю не меняют.
+`recent` пополняется при `launched`, `focused` и `done`; `choose`, `windows`, `minimized` и `volume`
+историю не меняют.
 
 ## Иконки
 
@@ -225,6 +239,11 @@ Authorization: Bearer <token>
 ```
 
 `hash` — первые 16 hex-символов `sha256(png)`.
+
+Для кнопок-ссылок (`kind: "url"`, http/https) агент сам скачивает иконку сайта: самую крупную
+из `<link rel="icon">` / `apple-touch-icon` страницы, иначе `/apple-touch-icon.png` или `/favicon.ico`.
+Не получилось (сайт недоступен, нужен вход, своя схема вроде `steam://`) — `icon: null`,
+телефон рисует значок-глобус.
 
 ## Wake-on-LAN
 

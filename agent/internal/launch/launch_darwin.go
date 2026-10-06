@@ -165,3 +165,6 @@ end try`).Output()
 func (macLauncher) Windows(store.Button) ([]Window, error) { return nil, nil }
 
 func (macLauncher) Focus(store.Button, string) error { return ErrUnsupported }
+
+// Windows() reports none on macOS, so a press never asks to minimize.
+func (macLauncher) Minimize(store.Button, string) error { return ErrUnsupported }

@@ -46,3 +46,5 @@ func (xdgLauncher) SetVolume(float64) error { return ErrUnsupported }
 func WatchForeground(ctx context.Context, onChange func(ForegroundApp)) { <-ctx.Done() }
 
 func (xdgLauncher) AppKeys(store.Button) []string { return nil }
+
+func (xdgLauncher) Minimize(store.Button, string) error { return ErrUnsupported }

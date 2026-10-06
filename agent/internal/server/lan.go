@@ -144,12 +144,13 @@ type inbound struct {
 
 // Result actions, see docs/protocol.md.
 const (
-	actionLaunched = "launched"
-	actionFocused  = "focused"
-	actionChoose   = "choose"  // several windows are open: the phone asks the user
-	actionWindows  = "windows" // answer to an explicit "windows" request
-	actionDone     = "done"    // keys/text/system button performed
-	actionVolume   = "volume"  // answer to a "volume" request
+	actionLaunched  = "launched"
+	actionFocused   = "focused"
+	actionChoose    = "choose"    // several windows are open: the phone asks the user
+	actionWindows   = "windows"   // answer to an explicit "windows" request
+	actionDone      = "done"      // keys/text/system button performed
+	actionVolume    = "volume"    // answer to a "volume" request
+	actionMinimized = "minimized" // the app's window was in front and got minimized
 )
 
 type resultMsg struct {
@@ -225,7 +226,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		switch msg.Type {
-		case "launch", "focus", "windows", "volume":
+		case "launch", "focus", "windows", "volume", "minimize":
 			c.queue(mustJSON(s.pressButton(msg, canChoose)))
 		default:
 			// Unknown types are ignored so newer phones can talk to older agents.
@@ -295,6 +296,16 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 			res.Windows = []launch.Window{}
 		}
 		return res
+	case "minimize": // a window from the chooser, or all of them ("window" empty)
+		if err := s.Launcher.Minimize(b, msg.Window); err != nil {
+			res.Error = "window_gone"
+			if errors.Is(err, launch.ErrUnsupported) {
+				res.Error = "unsupported"
+			}
+			return res
+		}
+		res.OK, res.Action = true, actionMinimized
+		return res // putting an app away is not a launch worth a history entry
 	case "focus":
 		if err := s.Launcher.Focus(b, msg.Window); err != nil {
 			res.Error = "window_gone"
@@ -328,6 +339,10 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 		case len(ws) > 1 && canChoose:
 			res.OK, res.Action, res.Windows = true, actionChoose, ws
 			return res // nothing happened yet: no history entry
+		case len(ws) == 1 && ws[0].Active && s.Launcher.Minimize(b, ws[0].ID) == nil:
+			// Pressing the button of the app that is already in front puts it away.
+			res.OK, res.Action = true, actionMinimized
+			return res
 		case len(ws) == 1 && s.Launcher.Focus(b, ws[0].ID) == nil:
 			res.Action = actionFocused
 		default:

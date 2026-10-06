@@ -13,14 +13,15 @@ enum LinkStatus { connecting, online, offline, unauthorized }
 class AppWindow {
   final String id;
   final String title;
-  const AppWindow(this.id, this.title);
+  final bool active; // in front on the PC
+  const AppWindow(this.id, this.title, {this.active = false});
 }
 
 class LaunchResult {
   final bool ok;
   // not_found | launch_failed | window_gone | confirm_required | unsupported | offline | timeout
   final String? error;
-  final String? action; // launched | focused | choose | windows | done | volume
+  final String? action; // launched | focused | choose | windows | done | volume | minimized
   final List<AppWindow> windows;
   final double? value; // volume level 0..1
   final bool? muted;
@@ -34,7 +35,10 @@ class LaunchResult {
     if (m['ok'] != true) return LaunchResult.fail(m['error'] as String? ?? 'error');
     return LaunchResult.ok(
       action: m['action'] as String?,
-      windows: [for (final w in (m['windows'] as List?) ?? const []) AppWindow((w as Map)['id'] as String, (w['title'] as String?) ?? '')],
+      windows: [
+        for (final w in (m['windows'] as List?) ?? const [])
+          AppWindow((w as Map)['id'] as String, (w['title'] as String?) ?? '', active: w['active'] == true),
+      ],
       value: (m['value'] as num?)?.toDouble(),
       muted: m['muted'] as bool?,
     );
@@ -72,6 +76,12 @@ class MachineLink {
   final _pending = <String, Completer<LaunchResult>>{};
 
   bool get running => _running;
+
+  bool _wasOnline = false;
+
+  /// Connected, or reconnecting after having been connected (a network blip should not
+  /// reshuffle the screen).
+  bool get present => status == LinkStatus.online || (status == LinkStatus.connecting && _wasOnline);
 
   /// Replaces stored data (e.g. after re-pairing or a new address from mDNS).
   void update(SavedMachine m, {bool reconnect = false}) {
@@ -223,6 +233,9 @@ class MachineLink {
   /// Lists the open windows of the button's app without doing anything (long press).
   Future<LaunchResult> windows(String buttonId) => _request({'type': 'windows', 'id': buttonId});
 
+  /// Minimizes one window of the button's app, or all of them without [windowId].
+  Future<LaunchResult> minimize(String buttonId, [String? windowId]) => _request({'type': 'minimize', 'id': buttonId, 'window': ?windowId});
+
   Future<LaunchResult> _request(Map<String, Object> msg) {
     final ws = _ws;
     if (ws == null || status != LinkStatus.online) return Future.value(const LaunchResult.fail('offline'));
@@ -264,6 +277,7 @@ class MachineLink {
   void _set(LinkStatus s) {
     if (status == s) return;
     status = s;
+    if (s == LinkStatus.online) _wasOnline = true;
     onChanged();
   }
 

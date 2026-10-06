@@ -29,6 +29,7 @@ var (
 	procIsIconic                    = user32.NewProc("IsIconic")
 	procShowWindow                  = user32.NewProc("ShowWindow")
 	procSetForegroundWindow         = user32.NewProc("SetForegroundWindow")
+	procGetAncestor                 = user32.NewProc("GetAncestor")
 	procGetClassNameW               = user32.NewProc("GetClassNameW")
 	procDwmGetWindowAttribute       = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmGetWindowAttribute")
 	procSHGetPropertyStoreForWindow = shell32.NewProc("SHGetPropertyStoreForWindow")
@@ -48,6 +49,8 @@ const (
 	wsExToolWindow   = 0x00000080
 	dwmwaCloaked     = 14
 	swRestore        = 9
+	swMinimize       = 6
+	gaRootOwner      = 3
 	vtLPWSTR         = 31
 	processQueryInfo = 0x1000 // PROCESS_QUERY_LIMITED_INFORMATION
 )
@@ -230,6 +233,7 @@ func matchingWindows(b store.Button) []Window {
 	}
 	self := uint32(os.Getpid())
 	exes := map[uint32]string{}
+	front := frontWindow()
 	var out []Window
 	for _, h := range topWindows() {
 		title, ok := switchable(h)
@@ -246,10 +250,44 @@ func matchingWindows(b store.Button) []Window {
 			hit = m.aumids[strings.ToLower(windowAUMID(h))]
 		}
 		if hit {
-			out = append(out, Window{ID: hwndID(h), Title: title})
+			minimized, _, _ := procIsIconic.Call(uintptr(h))
+			out = append(out, Window{ID: hwndID(h), Title: title, Active: h == front && minimized == 0})
 		}
 	}
 	return out
+}
+
+// frontWindow is the top-level window in front: a dialog or child that has focus counts
+// as its owner window.
+func frontWindow() windows.HWND {
+	fg := windows.GetForegroundWindow()
+	if fg == 0 {
+		return 0
+	}
+	if root, _, _ := procGetAncestor.Call(uintptr(fg), gaRootOwner); root != 0 {
+		return windows.HWND(root)
+	}
+	return fg
+}
+
+// Minimize minimizes a window of the button's app (all of them for windowID ""). As with
+// Focus, only windows that belong to the app are accepted.
+func (w *winLauncher) Minimize(b store.Button, windowID string) error {
+	return w.launchThread.do(func() error {
+		done := false
+		for _, win := range matchingWindows(b) {
+			if windowID != "" && win.ID != windowID {
+				continue
+			}
+			v, _ := strconv.ParseUint(win.ID, 10, 64)
+			procShowWindow.Call(uintptr(v), swMinimize) // the next window in z-order gets focus
+			done = true
+		}
+		if !done {
+			return ErrWindowGone
+		}
+		return nil
+	})
 }
 
 func (w *winLauncher) Windows(b store.Button) ([]Window, error) {

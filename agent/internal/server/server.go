@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
 	"log"
 	"net/http"
 	"runtime"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"barphone/agent/internal/favicon"
 	"barphone/agent/internal/firewall"
 	"barphone/agent/internal/icons"
 	"barphone/agent/internal/launch"
@@ -40,6 +42,8 @@ type Server struct {
 	Autostart Autostart
 	// Firewall is optional; nil hides the firewall status in the UI.
 	Firewall *firewall.Checker
+	// SiteIcon fetches a website's icon for link buttons; nil means favicon.Fetch.
+	SiteIcon func(ctx context.Context, url string) (image.Image, error)
 
 	hub    hub
 	fwBusy atomic.Bool
@@ -279,6 +283,14 @@ func (s *Server) appName(keys []string) string {
 
 // --- icons ---------------------------------------------------------------
 
+func (s *Server) siteIcon(_ store.ButtonKind, target string) (image.Image, error) {
+	fetch := s.SiteIcon
+	if fetch == nil {
+		fetch = favicon.Fetch
+	}
+	return fetch(context.Background(), target)
+}
+
 func iconKey(kind store.ButtonKind, target string) string { return string(kind) + "|" + target }
 
 func (s *Server) wakeIcons() {
@@ -341,7 +353,11 @@ func (s *Server) iconFor(kind store.ButtonKind, target string) string {
 	s.iconMu.Unlock()
 
 	hash := ""
-	if img, err := s.Launcher.Icon(kind, target); err == nil {
+	fetch := s.Launcher.Icon
+	if kind == store.KindURL {
+		fetch = s.siteIcon // links get the website's own icon
+	}
+	if img, err := fetch(kind, target); err == nil {
 		if hash, err = s.Icons.PutImage(img); err != nil {
 			s.Log.Printf("icon: store %q: %v", target, err)
 		}

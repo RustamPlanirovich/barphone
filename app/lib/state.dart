@@ -41,6 +41,18 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   MachineLink? get active => _links[_activeId] ?? (_order.isEmpty ? null : _links[_order.first]);
   bool isPaired(String machineId) => _links.containsKey(machineId);
 
+  /// The computer shown next to the active one on a landscape screen: the first other one
+  /// that is connected while the active one is too.
+  MachineLink? get companion {
+    final a = active;
+    if (a == null || !a.present) return null;
+    for (final id in _order) {
+      final l = _links[id]!;
+      if (l != a && l.present) return l;
+    }
+    return null;
+  }
+
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     deviceId = _prefs.getString('device_id') ?? _newId();

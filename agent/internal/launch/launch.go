@@ -39,6 +39,8 @@ type Launcher interface {
 	Windows(b store.Button) ([]Window, error)
 	// Focus brings one of those windows to the front.
 	Focus(b store.Button, windowID string) error
+	// Minimize minimizes one of those windows, or all of them when windowID is "".
+	Minimize(b store.Button, windowID string) error
 	// Volume reads the master output volume; SetVolume sets it (0..1) and unmutes.
 	Volume() (VolumeState, error)
 	SetVolume(level float64) error
@@ -49,8 +51,9 @@ type Launcher interface {
 
 // Window is an open window of a button's app, as offered to the phone.
 type Window struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Active bool   `json:"active,omitempty"` // the window in front on the PC
 }
 
 var (

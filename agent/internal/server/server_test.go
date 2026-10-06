@@ -27,12 +27,13 @@ import (
 )
 
 type fakeLauncher struct {
-	mu       sync.Mutex
-	launched []string
-	focused  []string
-	fail     bool
-	windows  map[string][]launch.Window // by button title
-	volume   launch.VolumeState
+	mu        sync.Mutex
+	launched  []string
+	focused   []string
+	minimized []string
+	fail      bool
+	windows   map[string][]launch.Window // by button title
+	volume    launch.VolumeState
 }
 
 func (f *fakeLauncher) Launch(b store.Button) error {
@@ -87,6 +88,19 @@ func (f *fakeLauncher) Focus(b store.Button, id string) error {
 	}
 	return launch.ErrWindowGone
 }
+func (f *fakeLauncher) Minimize(b store.Button, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, w := range f.windows[b.Title] {
+		if id == "" || w.ID == id {
+			f.minimized = append(f.minimized, w.ID)
+		}
+	}
+	if len(f.windows[b.Title]) == 0 {
+		return launch.ErrWindowGone
+	}
+	return nil
+}
 func (f *fakeLauncher) OpenURL(string) error { return nil }
 
 type env struct {
@@ -123,6 +137,8 @@ func newEnv(t *testing.T) *env {
 		Store: st, Icons: ic, Launcher: fake, Apps: &launch.AppCache{L: fake, TTL: time.Minute},
 		Pairing: &pairing.Sessions{}, Log: log.New(io.Discard, "", 0),
 		LANPort: 47800, UIPort: uiLn.Addr().(*net.TCPAddr).Port,
+		// Tests never go to the internet for link icons.
+		SiteIcon: func(context.Context, string) (image.Image, error) { return nil, errors.New("offline in tests") },
 		Addrs: func() []netinfo.Addr {
 			return []netinfo.Addr{{IP: "192.168.1.10", Iface: "Wi-Fi", MAC: "aa:bb:cc:dd:ee:ff"}}
 		},

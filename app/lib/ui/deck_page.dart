@@ -8,11 +8,22 @@ import 'theme.dart';
 import 'tile.dart';
 
 class DeckPage extends StatefulWidget {
-  const DeckPage({super.key, required this.app, required this.link, required this.onShowMachines, required this.onAddMachine});
+  const DeckPage({
+    super.key,
+    required this.app,
+    required this.link,
+    required this.onShowMachines,
+    required this.onAddMachine,
+    this.half = false,
+  });
   final AppState app;
   final MachineLink link;
   final VoidCallback onShowMachines;
   final VoidCallback onAddMachine;
+
+  /// One of two computers side by side: no swipe hints or safe-area padding of its own
+  /// (the home screen draws them once), and half the columns.
+  final bool half;
 
   @override
   State<DeckPage> createState() => _DeckPageState();
@@ -52,23 +63,25 @@ class _DeckPageState extends State<DeckPage> {
     }
     final shown = st?.shown(pinned);
     if (shown != null) _trackShown('${link.machine.id}/${shown.id}');
-    return SafeArea(
-      child: Column(
-        children: [
-          _Header(
-            link: link,
-            onTap: widget.onShowMachines,
-            profileName: st != null && st.profiles.length > 1 ? shown!.name : null,
-            pinned: pinned != null && st?.profile(pinned) != null,
-            onProfileTap: () => showProfilePicker(context, widget.app, link),
-          ),
-          const SwipeHint(label: 'компьютеры', up: false),
-          Expanded(child: _body(context, link)),
-          _footer(link),
-        ],
-      ),
+    final page = Column(
+      children: [
+        _Header(
+          link: link,
+          onTap: widget.onShowMachines,
+          profileName: st != null && st.profiles.length > 1 ? shown!.name : null,
+          pinned: pinned != null && st?.profile(pinned) != null,
+          onProfileTap: () => showProfilePicker(context, widget.app, link),
+        ),
+        if (!widget.half) const SwipeHint(label: 'компьютеры', up: false),
+        Expanded(child: _body(context, link)),
+        if (!widget.half) const DeckFooter(),
+      ],
     );
+    return widget.half ? page : SafeArea(child: page);
   }
+
+  GridLayout _grid(double width, double height, int columns) =>
+      widget.half ? computeHalfGrid(width, height, columns, gap: 12) : computeGrid(width, height, columns, gap: 12);
 
   Widget _body(BuildContext context, MachineLink link) {
     final st = link.state;
@@ -106,11 +119,11 @@ class _DeckPageState extends State<DeckPage> {
             builder: (context, v, child) => Opacity(opacity: v, child: child),
             child: LayoutBuilder(
               builder: (context, box) {
-                var g = computeGrid(box.maxWidth, box.maxHeight, deck.columns, gap: 12);
+                var g = _grid(box.maxWidth, box.maxHeight, deck.columns);
                 var pages = g.pages(deck.buttons.length);
                 if (pages > 1) {
                   // Leave room for the page dots.
-                  g = computeGrid(box.maxWidth, box.maxHeight - _dotsHeight, deck.columns, gap: 12);
+                  g = _grid(box.maxWidth, box.maxHeight - _dotsHeight, deck.columns);
                   pages = g.pages(deck.buttons.length);
                 }
                 if (_page >= pages) _page = pages - 1;
@@ -175,8 +188,14 @@ class _DeckPageState extends State<DeckPage> {
     text: 'Компьютер выключен, спит или в другой сети. Проверьте, что barphone запущен на нём.',
     action: _WakeOrRetry(app: widget.app, link: link),
   );
+}
 
-  Widget _footer(MachineLink link) => const Padding(
+/// "Swipe up for recent launches" under the deck.
+class DeckFooter extends StatelessWidget {
+  const DeckFooter({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Padding(
     padding: EdgeInsets.only(top: 6, bottom: 8),
     child: SwipeHint(label: 'недавние', up: true),
   );

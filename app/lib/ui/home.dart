@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../protocol/link.dart';
 import '../state.dart';
 import 'add_machine.dart';
 import 'deck_page.dart';
@@ -58,6 +59,36 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AddMachineScreen(app: widget.app))).then((_) => _go(_deckPage));
   }
 
+  /// The deck page. A landscape screen with a second computer connected shows both decks
+  /// side by side: the active one on the left.
+  Widget _deck(BuildContext context, MachineLink active) {
+    final other = MediaQuery.orientationOf(context) == Orientation.landscape ? widget.app.companion : null;
+    if (other == null) {
+      return DeckPage(app: widget.app, link: active, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd);
+    }
+    Widget half(MachineLink link) => Expanded(
+      child: DeckPage(app: widget.app, link: link, half: true, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd),
+    );
+    return SafeArea(
+      child: Column(
+        children: [
+          const SwipeHint(label: 'компьютеры', up: false),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                half(active),
+                Container(width: 1, margin: const EdgeInsets.symmetric(vertical: 12), color: C.border),
+                half(other),
+              ],
+            ),
+          ),
+          const DeckFooter(),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -80,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   towardsBottom: true,
                   child: MachinesPage(app: widget.app, onPicked: () => _go(_deckPage), onAdd: _openAdd),
                 ),
-                DeckPage(app: widget.app, link: active, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd),
+                _deck(context, active),
                 _handBackAtEdge(towardsBottom: false, child: RecentPage(link: active)),
               ],
             ),

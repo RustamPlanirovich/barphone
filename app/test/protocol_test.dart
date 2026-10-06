@@ -72,6 +72,15 @@ void main() {
       expect(g.rows, greaterThanOrEqualTo(1));
       expect(g.pages(20), (20 / g.perPage).ceil());
     });
+    test('half of a split screen gets half the columns, tiles stay big', () {
+      final full = computeGrid(720, 360, 3);
+      expect(full.columns, 6);
+      final half = computeHalfGrid(360, 360, 3);
+      expect(half.columns, 3);
+      expect(half.rows, greaterThanOrEqualTo(full.rows));
+      expect(half.tile, closeTo(full.tile, full.tile * .1));
+      expect(computeHalfGrid(445, 323, 3).columns, (computeGrid(890, 323, 3).columns / 2).ceil());
+    });
   });
 
   test('magic packet is 6x FF + 16x MAC', () {
