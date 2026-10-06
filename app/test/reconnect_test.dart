@@ -11,6 +11,7 @@ class _Agent {
   late HttpServer _http;
   final sockets = <WebSocket>[];
   bool accepting = true;
+  List<String> addrs = const [];
 
   int get port => _http.port;
 
@@ -29,6 +30,14 @@ class _Agent {
       }
       final ws = await WebSocketTransformer.upgrade(req);
       sockets.add(ws);
+      ws.add(
+        jsonEncode({
+          'type': 'state',
+          'machine': {'id': 'm', 'name': 'ПК', 'os': 'windows', 'addrs': addrs},
+          'deck': {'columns': 3, 'buttons': <dynamic>[]},
+          'recent': <dynamic>[],
+        }),
+      );
       ws.listen((data) {
         final msg = jsonDecode(data as String) as Map;
         ws.add(jsonEncode({'type': 'result', 'req': msg['req'], 'ok': true, 'action': 'launched'}));
@@ -116,5 +125,24 @@ void main() {
     final res = await link.launch('b1');
     expect(res.error, 'offline');
     expect(DateTime.now().difference(started), greaterThan(const Duration(seconds: 3)));
+  });
+
+  test('current agent addresses replace the saved ones (Tailscale, a new network)', () async {
+    final agent = _Agent()..addrs = ['127.0.0.1', '100.101.12.7'];
+    await agent.start();
+    final saved = <SavedMachine>[];
+    final link = MachineLink(
+      SavedMachine(id: 'm', name: 'ПК', os: 'windows', port: agent.port, hosts: const ['127.0.0.1', '192.168.0.99'], token: 't'),
+      onChanged: () {},
+      onMachineUpdated: saved.add,
+    );
+    addTearDown(() async {
+      link.dispose();
+      await agent.stop();
+    });
+    link.start();
+    await until(() => link.state != null);
+    expect(link.machine.hosts, ['127.0.0.1', '100.101.12.7']);
+    expect(saved.last.hosts, ['127.0.0.1', '100.101.12.7'], reason: 'persisted');
   });
 }

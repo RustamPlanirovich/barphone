@@ -139,3 +139,20 @@ func TestTimers(t *testing.T) {
 		t.Fatal("«Проверить» on a timer")
 	}
 }
+
+func TestStateListsAddresses(t *testing.T) {
+	e := newEnv(t)
+	status, out := e.pair(e.startPairing(), "dev")
+	if status != 200 {
+		t.Fatal(status)
+	}
+	ws, _, err := e.dial(out["token"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	m := readMsg(t, ws, "state")["machine"].(map[string]any)
+	if addrs, _ := m["addrs"].([]any); len(addrs) != 1 || addrs[0] != "192.168.1.10" {
+		t.Fatalf("machine.addrs: %v", m)
+	}
+}

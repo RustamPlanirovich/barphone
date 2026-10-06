@@ -9,14 +9,16 @@ class MachineInfo {
   final String name;
   final String os;
   final List<String> macs;
+  final List<String> addrs; // where the agent can be reached now, best first
 
-  const MachineInfo({required this.id, required this.name, required this.os, this.macs = const []});
+  const MachineInfo({required this.id, required this.name, required this.os, this.macs = const [], this.addrs = const []});
 
   factory MachineInfo.fromJson(Map<String, dynamic> j) => MachineInfo(
     id: j['id'] as String,
     name: (j['name'] as String?) ?? '',
     os: (j['os'] as String?) ?? '',
     macs: ((j['macs'] as List?) ?? const []).cast<String>(),
+    addrs: ((j['addrs'] as List?) ?? const []).cast<String>(),
   );
 }
 

@@ -231,6 +231,8 @@ class MachineLink {
             name: st.machine.name.isEmpty ? null : st.machine.name,
             os: st.machine.os.isEmpty ? null : st.machine.os,
             macs: st.machine.macs.isEmpty ? null : st.machine.macs,
+            // New addresses (another network, Tailscale) without pairing again.
+            hosts: st.machine.addrs.isEmpty ? null : st.machine.addrs,
             lastState: msg,
           );
           onMachineUpdated(_machine);

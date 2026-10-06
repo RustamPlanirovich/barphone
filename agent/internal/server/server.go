@@ -131,6 +131,8 @@ type machineInfo struct {
 	Name string   `json:"name"`
 	OS   string   `json:"os"`
 	MACs []string `json:"macs,omitempty"`
+	// Addrs: where phones can reach this agent now (LAN first, then Tailscale and the like).
+	Addrs []string `json:"addrs,omitempty"`
 }
 
 type wireButton struct {
@@ -176,9 +178,10 @@ type wireProfile struct {
 func (s *Server) stateMessage() []byte {
 	cfg := s.Store.Snapshot()
 	active := s.activeProfile(&cfg)
+	addrs := s.Addrs()
 	msg := stateMsg{
 		Type:          "state",
-		Machine:       machineInfo{ID: cfg.MachineID, Name: cfg.Name, OS: OSName(), MACs: netinfo.MACs(s.Addrs())},
+		Machine:       machineInfo{ID: cfg.MachineID, Name: cfg.Name, OS: OSName(), MACs: netinfo.MACs(addrs), Addrs: netinfo.IPs(addrs)},
 		ActiveProfile: active.ID,
 		Deck:          wireDeck{Columns: active.Deck.Columns, Buttons: wireButtons(active.Deck.Buttons)},
 		Recent:        cfg.Recent,

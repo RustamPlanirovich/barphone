@@ -31,7 +31,12 @@ func isVirtual(name string) bool {
 	return false
 }
 
-// LANAddrs returns private IPv4 addresses of interfaces that are up, physical ones first.
+// cgnat is 100.64.0.0/10: not "private", but where Tailscale (and similar overlay
+// networks) put their addresses, so a phone on the same tailnet can reach the PC.
+var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0).To4(), Mask: net.CIDRMask(10, 32)}
+
+// LANAddrs returns private (and Tailscale) IPv4 addresses of interfaces that are up,
+// physical ones first.
 func LANAddrs() []Addr {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -52,10 +57,11 @@ func LANAddrs() []Addr {
 				continue
 			}
 			ip := ipn.IP.To4()
-			if ip == nil || !ip.IsPrivate() {
+			if ip == nil || !ip.IsPrivate() && !cgnat.Contains(ip) {
 				continue
 			}
-			out = append(out, Addr{IP: ip.String(), Iface: ifc.Name, Virtual: isVirtual(ifc.Name), MAC: ifc.HardwareAddr.String()})
+			virtual := isVirtual(ifc.Name) || cgnat.Contains(ip)
+			out = append(out, Addr{IP: ip.String(), Iface: ifc.Name, Virtual: virtual, MAC: ifc.HardwareAddr.String()})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return !out[i].Virtual && out[j].Virtual })
