@@ -1,0 +1,235 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../protocol/link.dart';
+import '../protocol/models.dart';
+import 'glyphs.dart';
+import 'theme.dart';
+import 'volume_slider.dart';
+import 'window_chooser.dart';
+
+/// Icon of a deck button, fetched from the PC with the device token.
+class ButtonIcon extends StatelessWidget {
+  const ButtonIcon({super.key, required this.button, required this.link, required this.size});
+  final DeckButton button;
+  final MachineLink link;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final hash = button.icon;
+    final url = hash == null ? null : link.iconUrl(hash);
+    final glyph = button.glyph;
+    final fallback = hasGlyph(glyph) ? GlyphIcon(glyph!, size: size) : _Letter(button: button, size: size);
+    if (url == null) return fallback;
+    return Image.network(
+      url,
+      headers: link.authHeaders,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, _, _) => fallback,
+      frameBuilder: (_, child, frame, sync) => sync || frame != null ? child : SizedBox.square(dimension: size),
+    );
+  }
+}
+
+class _Letter extends StatelessWidget {
+  const _Letter({required this.button, required this.size});
+  final DeckButton button;
+  final double size;
+
+  static const _palette = [
+    Color(0xFF4F7CFF),
+    Color(0xFF2EB8A6),
+    Color(0xFFB36BFF),
+    Color(0xFFFF7A45),
+    Color(0xFFE85D8F),
+    Color(0xFF5FA8FF),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final title = button.title.trim();
+    final color = _palette[title.hashCode.abs() % _palette.length];
+    final child = button.kind == 'url'
+        ? Icon(Icons.language_rounded, size: size * .55, color: Colors.white)
+        : Text(
+            title.isEmpty ? '?' : title.characters.first.toUpperCase(),
+            style: TextStyle(fontSize: size * .45, fontWeight: FontWeight.w700, color: Colors.white),
+          );
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: color.withValues(alpha: .85), borderRadius: BorderRadius.circular(size * .24)),
+      child: child,
+    );
+  }
+}
+
+/// Feedback for a press: haptics on the phone, a flash on the tile, a message on failure.
+/// When the app already has several windows open on the PC, the user picks one.
+/// Buttons marked `confirm` (shutdown, restart) ask first.
+Future<void> pressButton(BuildContext context, MachineLink link, DeckButton b, void Function(bool ok) flash) async {
+  if (b.confirm && !await confirmPress(context, link, b)) return;
+  HapticFeedback.lightImpact();
+  final res = await link.launch(b.id, confirmed: b.confirm);
+  if (res.needsChoice) {
+    if (context.mounted) await showWindowChooser(context, link, b, res.windows, flash: flash);
+    return;
+  }
+  flash(res.ok);
+  if (!context.mounted) return;
+  if (!res.ok) {
+    showPressError(context, b, res.error);
+  } else if (res.muted != null) {
+    showNote(context, res.muted! ? 'Звук выключен' : 'Звук включён');
+  }
+}
+
+Future<bool> confirmPress(BuildContext context, MachineLink link, DeckButton b) async {
+  HapticFeedback.mediumImpact();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: Text('${b.title}?'),
+      content: Text('Компьютер «${link.machine.name}» выполнит это сразу.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: C.danger, foregroundColor: Colors.white),
+          onPressed: () => Navigator.pop(d, true),
+          child: Text(b.title),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+void showNote(BuildContext context, String text) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1200)));
+}
+
+/// Long press: always offer the open windows and "start a new one".
+Future<void> showButtonWindows(BuildContext context, MachineLink link, DeckButton b, void Function(bool ok) flash) async {
+  HapticFeedback.mediumImpact();
+  final res = await link.windows(b.id);
+  if (!context.mounted) return;
+  if (!res.ok) {
+    showPressError(context, b, res.error);
+    return;
+  }
+  await showWindowChooser(context, link, b, res.windows, flash: flash);
+}
+
+void showPressError(BuildContext context, DeckButton b, String? error) {
+  HapticFeedback.heavyImpact();
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text('${b.title}: ${launchError(error)}'), duration: const Duration(seconds: 2)));
+}
+
+class DeckTile extends StatefulWidget {
+  const DeckTile({super.key, required this.button, required this.link, required this.size, required this.enabled});
+  final DeckButton button;
+  final MachineLink link;
+  final double size;
+  final bool enabled;
+
+  @override
+  State<DeckTile> createState() => _DeckTileState();
+}
+
+class _DeckTileState extends State<DeckTile> {
+  bool _down = false;
+  Color? _flash;
+  Timer? _flashTimer;
+  VolumeDrag? _drag;
+
+  void _setFlash(bool ok) {
+    if (!mounted) return;
+    setState(() => _flash = ok ? C.ok : C.danger);
+    _flashTimer?.cancel();
+    _flashTimer = Timer(const Duration(milliseconds: 450), () {
+      if (mounted) setState(() => _flash = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _flashTimer?.cancel();
+    _drag?.cancel(); // otherwise the volume panel would stay on screen
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.size;
+    final b = widget.button;
+    final labelSize = (s * .11).clamp(10.0, 15.0);
+    return Semantics(
+      button: true,
+      label: b.title,
+      child: GestureDetector(
+        onTapDown: widget.enabled ? (_) => setState(() => _down = true) : null,
+        onTapCancel: () => setState(() => _down = false),
+        onTapUp: (_) => setState(() => _down = false),
+        onTap: widget.enabled ? () => pressButton(context, widget.link, b, _setFlash) : null,
+        // Long press: app buttons offer their open windows, the volume button turns into a slider.
+        onLongPress: widget.enabled && b.launchesApp ? () => showButtonWindows(context, widget.link, b, _setFlash) : null,
+        onLongPressStart: widget.enabled && b.isSlider ? (_) => (_drag = VolumeDrag(context, widget.link, b)).start() : null,
+        onLongPressMoveUpdate: b.isSlider ? (d) => _drag?.move(d.offsetFromOrigin) : null,
+        onLongPressEnd: b.isSlider
+            ? (_) {
+                _drag?.end();
+                _drag = null;
+              }
+            : null,
+        child: AnimatedScale(
+          scale: _down ? .92 : 1,
+          duration: const Duration(milliseconds: 90),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: s,
+            height: s,
+            padding: EdgeInsets.fromLTRB(s * .08, s * .1, s * .08, s * .07),
+            decoration: BoxDecoration(
+              color: _down ? C.tilePressed : C.tile,
+              borderRadius: BorderRadius.circular(s * .2),
+              border: Border.all(color: _flash ?? Colors.transparent, width: 2.5),
+              boxShadow: _flash == null ? null : [BoxShadow(color: _flash!.withValues(alpha: .35), blurRadius: 14)],
+            ),
+            child: Opacity(
+              opacity: widget.enabled ? 1 : .4,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Center(
+                      child: ButtonIcon(button: b, link: widget.link, size: s * .5),
+                    ),
+                  ),
+                  SizedBox(height: s * .04),
+                  Text(
+                    b.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: labelSize, color: const Color(0xFFC9CDD6), height: 1.1),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

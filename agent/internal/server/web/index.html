@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>barphone — настройка деки</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="icon.svg" alt="" width="28" height="28">
+    <span>barphone</span>
+  </div>
+  <label class="machine-name" title="Имя компьютера на телефоне">
+    <input id="machineName" maxlength="48" spellcheck="false" aria-label="Имя компьютера">
+  </label>
+  <div class="spacer"></div>
+  <button class="btn primary" id="pairBtn">Подключить телефон</button>
+</header>
+
+<main class="layout">
+  <section class="card deck-card">
+    <div class="card-head">
+      <h2>Дека</h2>
+      <div class="columns-ctl" title="Колонок на телефоне в портретной ориентации">
+        <span>Колонки</span>
+        <button class="icon-btn" id="colsMinus" aria-label="Меньше колонок">−</button>
+        <output id="colsValue">3</output>
+        <button class="icon-btn" id="colsPlus" aria-label="Больше колонок">+</button>
+      </div>
+    </div>
+    <div class="profile-bar">
+      <div class="profile-tabs" id="profileTabs" role="tablist" aria-label="Профили"></div>
+      <div class="fg-now small muted" id="fgNow"></div>
+    </div>
+    <div class="profile-settings" id="profileSettings">
+      <label class="profile-name">Название профиля <input id="profileName" maxlength="32" spellcheck="false"></label>
+      <div class="profile-apps" id="profileAppsRow">
+        <span class="small muted">Включается, когда на компьютере впереди:</span>
+        <div class="chips" id="profileApps"></div>
+        <button class="btn ghost small" id="bindApp">+ Приложение</button>
+      </div>
+      <p class="small muted" id="profileDefaultHint" hidden>Показывается, когда впереди приложение, не привязанное ни к одному профилю.</p>
+      <button class="btn danger ghost small" id="profileDelete">Удалить профиль</button>
+    </div>
+    <div class="phone">
+      <div class="grid" id="grid"></div>
+    </div>
+    <p class="hint">Перетаскивайте кнопки, чтобы поменять порядок. Клик — редактировать. Изменения сразу уходят на телефон.</p>
+  </section>
+
+  <aside class="side">
+    <section class="card">
+      <div class="card-head"><h2>Телефоны</h2></div>
+      <ul class="list" id="devices"></ul>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Недавние с деки</h2></div>
+      <ul class="list" id="recent"></ul>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Этот компьютер</h2></div>
+      <div id="netinfo" class="netinfo"></div>
+      <label class="switch-row" id="autostartRow" hidden>
+        <span>Запускать при входе в систему</span>
+        <input type="checkbox" id="autostart" role="switch">
+      </label>
+    </section>
+  </aside>
+</main>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- Добавление кнопки -->
+<dialog id="addDialog" class="modal wide">
+  <div class="modal-head">
+    <h3>Добавить кнопку</h3>
+    <button class="icon-btn" data-close aria-label="Закрыть">✕</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="apps" aria-selected="true">Приложения</button>
+    <button role="tab" data-tab="path">Файл или программа</button>
+    <button role="tab" data-tab="url">Ссылка</button>
+    <button role="tab" data-tab="keys">Клавиши</button>
+    <button role="tab" data-tab="text">Текст</button>
+    <button role="tab" data-tab="system">Система</button>
+  </div>
+  <div class="tab-panel" data-panel="apps">
+    <div class="search-row">
+      <input type="search" id="appSearch" placeholder="Поиск приложений…" autocomplete="off">
+      <button class="btn ghost" id="appsRefresh" title="Перечитать список приложений">Обновить</button>
+    </div>
+    <ul class="app-list" id="appList"></ul>
+  </div>
+  <form class="tab-panel form" data-panel="path" hidden id="pathForm">
+    <label>Путь
+      <div class="row">
+        <input id="pathTarget" required placeholder="C:\Program Files\App\app.exe" spellcheck="false">
+        <button type="button" class="btn ghost" id="pickFile">Обзор…</button>
+      </div>
+    </label>
+    <label>Аргументы <span class="muted">(необязательно)</span>
+      <input id="pathArgs" spellcheck="false" placeholder="--profile work">
+    </label>
+    <label>Название <span class="muted">(необязательно)</span>
+      <input id="pathTitle" maxlength="64">
+    </label>
+    <div class="actions"><button class="btn primary" type="submit">Добавить</button></div>
+  </form>
+  <form class="tab-panel form" data-panel="url" hidden id="urlForm">
+    <label>Ссылка
+      <input id="urlTarget" required placeholder="https://… или steam://rungameid/…" spellcheck="false">
+    </label>
+    <label>Название <span class="muted">(необязательно)</span>
+      <input id="urlTitle" maxlength="64">
+    </label>
+    <div class="actions"><button class="btn primary" type="submit">Добавить</button></div>
+  </form>
+  <form class="tab-panel form" data-panel="keys" hidden id="keysForm">
+    <label>Сочетание клавиш
+      <div class="row">
+        <input id="keysTarget" required placeholder="Ctrl+Shift+P" spellcheck="false" autocomplete="off">
+        <button type="button" class="btn ghost" id="keysRecord">Записать</button>
+      </div>
+    </label>
+    <div class="chips" id="keysPresets"></div>
+    <label>Название <span class="muted">(необязательно)</span>
+      <input id="keysTitle" maxlength="64">
+    </label>
+    <p class="muted small">Нажатие уходит в окно, которое сейчас активно на компьютере.</p>
+    <div class="actions"><button class="btn primary" type="submit">Добавить</button></div>
+  </form>
+  <form class="tab-panel form" data-panel="text" hidden id="textForm">
+    <label>Текст
+      <textarea id="textTarget" required rows="4" maxlength="2000"></textarea>
+    </label>
+    <label class="check"><input type="checkbox" id="textEnter"> Нажать Enter в конце</label>
+    <label>Название <span class="muted">(необязательно)</span>
+      <input id="textTitle" maxlength="64">
+    </label>
+    <p class="muted small">Текст вводится в активное окно на компьютере, перенос строки — это Enter.</p>
+    <div class="actions"><button class="btn primary" type="submit">Добавить</button></div>
+  </form>
+  <div class="tab-panel" data-panel="system" hidden>
+    <ul class="app-list" id="systemList"></ul>
+  </div>
+</dialog>
+
+<!-- Привязка приложения к профилю -->
+<dialog id="bindDialog" class="modal wide">
+  <div class="modal-head">
+    <h3>Когда включать профиль</h3>
+    <button class="icon-btn" data-close aria-label="Закрыть">✕</button>
+  </div>
+  <div class="tab-panel">
+    <p class="small muted" style="margin-top:0">Профиль включится на телефоне, когда это приложение окажется впереди на компьютере.</p>
+    <h4 class="list-title">Недавно были впереди на этом компьютере</h4>
+    <ul class="app-list short" id="bindRecent"></ul>
+    <h4 class="list-title">Все приложения</h4>
+    <div class="search-row">
+      <input type="search" id="bindSearch" placeholder="Поиск приложений…" autocomplete="off">
+    </div>
+    <ul class="app-list" id="bindApps"></ul>
+  </div>
+</dialog>
+
+<!-- Редактирование кнопки -->
+<dialog id="editDialog" class="modal">
+  <div class="modal-head">
+    <h3>Кнопка</h3>
+    <button class="icon-btn" data-close aria-label="Закрыть">✕</button>
+  </div>
+  <div class="edit-body">
+    <div class="edit-icon">
+      <div class="tile big" id="editPreview"></div>
+      <div class="icon-actions">
+        <label class="btn ghost small">Своя иконка<input type="file" id="iconFile" accept="image/png,image/jpeg,image/gif" hidden></label>
+        <button class="btn ghost small" id="iconReset">Сбросить</button>
+      </div>
+    </div>
+    <form class="form" id="editForm">
+      <label>Название <input id="editTitle" maxlength="64"></label>
+      <label id="editTargetRow"><span id="editTargetLabel">Что запускать</span> <input id="editTarget" spellcheck="false"></label>
+      <label id="editTextRow" hidden>Текст <textarea id="editText" rows="4" maxlength="2000"></textarea></label>
+      <label id="editArgsRow">Аргументы <input id="editArgs" spellcheck="false"></label>
+      <label id="editRunningRow">Если уже открыто
+        <select id="editRunning">
+          <option value="">Переключиться на окно (окон несколько — выбрать на телефоне)</option>
+          <option value="new">Всегда запускать новое</option>
+        </select>
+      </label>
+      <p class="muted small" id="editKind"></p>
+    </form>
+  </div>
+  <div class="actions split">
+    <button class="btn danger ghost" id="editDelete">Удалить</button>
+    <div>
+      <button class="btn ghost" id="editTest">Проверить на этом ПК</button>
+      <button class="btn primary" data-close>Готово</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Сопряжение -->
+<dialog id="pairDialog" class="modal">
+  <div class="modal-head">
+    <h3>Подключить телефон</h3>
+    <button class="icon-btn" data-close aria-label="Закрыть">✕</button>
+  </div>
+  <div class="pair-body" id="pairBody"></div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

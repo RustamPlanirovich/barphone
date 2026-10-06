@@ -1,0 +1,800 @@
+'use strict';
+
+// ---------- helpers ----------
+const $ = (sel, el = document) => el.querySelector(sel);
+
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k in el && typeof v !== 'string') el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+
+async function req(method, url, body, rawType) {
+  const opts = { method, headers: { 'X-Barphone-UI': '1' } };
+  if (body !== undefined) {
+    if (rawType) { opts.headers['Content-Type'] = rawType; opts.body = body; }
+    else { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  }
+  const r = await fetch(url, opts);
+  const data = (r.headers.get('content-type') || '').includes('json') ? await r.json() : null;
+  if (!r.ok) throw new Error((data && (data.message || data.error)) || `${r.status} ${r.statusText}`);
+  return data;
+}
+
+function toast(text, isError = false) {
+  const el = h('div', { class: 'toast' + (isError ? ' error' : '') }, text);
+  $('#toasts').append(el);
+  setTimeout(() => el.remove(), isError ? 5000 : 2200);
+}
+
+const rtf = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
+function ago(iso) {
+  if (!iso) return '';
+  const s = (new Date(iso).getTime() - Date.now()) / 1000;
+  const a = Math.abs(s);
+  if (a < 45) return 'только что';
+  if (a < 3600) return rtf.format(Math.round(s / 60), 'minute');
+  if (a < 86400) return rtf.format(Math.round(s / 3600), 'hour');
+  if (a < 86400 * 7) return rtf.format(Math.round(s / 86400), 'day');
+  return new Date(iso).toLocaleDateString('ru');
+}
+
+const iconURL = (hash) => `/api/icon/${hash}.png`;
+const KIND_LABEL = {
+  app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
+  keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие',
+};
+const GLYPH = {
+  keys: '⌨️', text: '📝',
+  media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
+  volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
+  lock: '🔒', sleep: '🌙', display_off: '🖥️', shutdown: '🔌', restart: '🔄',
+};
+const glyphOf = (b) => (b.kind === 'system' ? GLYPH[b.target] : GLYPH[b.kind]);
+const systemAction = (id) => (state.systemActions || []).find((a) => a.id === id);
+
+function tileFace(b) {
+  const glyph = glyphOf(b);
+  return [
+    b.icon
+      ? h('img', { src: iconURL(b.icon), alt: '' })
+      : h('div', { class: 'glyph' }, glyph || (b.kind === 'url' ? '↗' : (b.title || '?').trim().charAt(0).toUpperCase())),
+    h('div', { class: 'label' }, b.title),
+  ];
+}
+
+// ---------- state ----------
+let state = null;
+let localVersion = 0; // bumps on every local deck edit
+let savedVersion = 0;
+let saveTimer = null;
+
+// Profiles: the page edits one of them at a time ("the edited profile"); every deck
+// operation goes through curDeck(). Button lookups search all profiles.
+let editingProfileId = 'default';
+const curProfile = () => state.profiles.find((p) => p.id === editingProfileId) || state.profiles[0];
+const curDeck = () => curProfile().deck;
+const allButtons = () => state.profiles.flatMap((p) => p.deck.buttons);
+const findButton = (id) => allButtons().find((b) => b.id === id);
+// The agent omits empty lists in some answers; the page always wants arrays.
+const normProfiles = (ps) => ps.map((p) => ({ ...p, apps: p.apps || [], deck: { ...p.deck, buttons: (p.deck && p.deck.buttons) || [] } }));
+
+async function refresh() {
+  const fresh = await req('GET', '/api/state');
+  fresh.profiles = normProfiles(fresh.profiles);
+  if (state && localVersion !== savedVersion) fresh.profiles = state.profiles; // keep unsaved edits
+  state = fresh;
+  if (!state.profiles.some((p) => p.id === editingProfileId)) editingProfileId = state.profiles[0].id;
+  render();
+}
+
+let refreshTimer = null;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => refresh().catch((e) => console.error(e)), 60);
+}
+
+function connectEvents() {
+  const es = new EventSource('/api/events');
+  es.addEventListener('change', scheduleRefresh);
+  es.onerror = () => { es.close(); setTimeout(connectEvents, 2000); };
+}
+
+// Deck edits are applied locally right away and saved (debounced) as a whole.
+function editDeck(mutate, delay = 0) {
+  mutate(curDeck());
+  localVersion++;
+  render();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDeck, delay);
+}
+
+// Profile-level edits (names, app bindings, adding/removing profiles) save right away.
+function editProfiles(mutate) {
+  mutate(state.profiles);
+  localVersion++;
+  render();
+  clearTimeout(saveTimer);
+  return saveDeck();
+}
+
+// Saves all profiles at once. New profiles and buttons get their IDs from the agent;
+// the edited profile is kept by position when it was just created.
+async function saveDeck() {
+  const v = localVersion;
+  const index = Math.max(0, state.profiles.indexOf(curProfile()));
+  try {
+    const saved = normProfiles(await req('PUT', '/api/profiles', state.profiles));
+    if (v === localVersion) {
+      state.profiles = saved;
+      savedVersion = v;
+      if (!saved.some((p) => p.id === editingProfileId)) editingProfileId = (saved[index] || saved[0]).id;
+      render();
+    }
+    return true;
+  } catch (e) {
+    savedVersion = localVersion;
+    toast('Не сохранилось: ' + e.message, true);
+    refresh();
+    return false;
+  }
+}
+
+// ---------- render ----------
+function render() {
+  if (!state) return;
+  const name = $('#machineName');
+  if (document.activeElement !== name) name.value = state.machine.name;
+  document.title = `barphone — ${state.machine.name}`;
+  renderProfiles();
+  renderDeck();
+  renderDevices();
+  renderRecent();
+  renderNet();
+  if ($('#editDialog').open) renderEditPreview();
+  if ($('#pairDialog').open) renderPair();
+  if ($('#bindDialog').open) renderBind();
+  if ($('#addDialog').open) {
+    renderApps();
+    if (!$('#addDialog [data-panel=system]').hidden) renderSystemList();
+  }
+}
+
+let dragIndex = null;
+let renderedDeck = '';
+
+// Rebuilding the grid on every SSE event (phones connecting, icons arriving) would eat
+// clicks and break drags that straddle a refresh, so only redraw when the deck changed.
+function renderDeck(force = false) {
+  const key = editingProfileId + JSON.stringify(curDeck());
+  if (!force && (key === renderedDeck || dragIndex !== null)) return;
+  renderedDeck = key;
+  const { columns, buttons } = curDeck();
+  $('#colsValue').value = columns;
+  const grid = $('#grid');
+  grid.style.setProperty('--cols', columns);
+  grid.replaceChildren(
+    ...buttons.map((b, i) => h('div', {
+      class: 'tile', draggable: 'true', 'data-id': b.id, title: `${b.title}\n${KIND_LABEL[b.kind]}: ${b.target}`,
+      ondragstart: (e) => { dragIndex = i; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; },
+      ondragend: () => { dragIndex = null; renderDeck(true); },
+      ondragover: (e) => {
+        if (dragIndex === null) return;
+        e.preventDefault();
+        const el = e.currentTarget;
+        const after = e.offsetX > el.clientWidth / 2;
+        el.classList.toggle('drop-after', after);
+        el.classList.toggle('drop-before', !after);
+      },
+      ondragleave: (e) => e.currentTarget.classList.remove('drop-before', 'drop-after'),
+      ondrop: (e) => {
+        e.preventDefault();
+        const from = dragIndex;
+        if (from === null) return;
+        let to = i + (e.offsetX > e.currentTarget.clientWidth / 2 ? 1 : 0);
+        if (from < to) to--;
+        dragIndex = null;
+        if (from === to) return renderDeck(true);
+        editDeck((d) => { const [m] = d.buttons.splice(from, 1); d.buttons.splice(to, 0, m); });
+      },
+    }, tileFace(b))),
+    h('div', { class: 'tile add', 'data-add': true, title: 'Добавить кнопку' }, '+'),
+  );
+}
+
+// One delegated handler: if the grid was rebuilt between mousedown and mouseup the click
+// lands on the grid itself, so resolve the tile from the pointer position.
+$('#grid').addEventListener('click', (e) => {
+  const tile = e.target.closest('.tile') || document.elementFromPoint(e.clientX, e.clientY)?.closest('#grid .tile');
+  if (!tile) return;
+  if (tile.dataset.add !== undefined) openAdd();
+  else if (tile.dataset.id) openEdit(tile.dataset.id);
+});
+
+function renderDevices() {
+  const ul = $('#devices');
+  if (!state.devices.length) {
+    ul.replaceChildren(h('li', { class: 'empty' }, 'Пока ни одного. Нажмите «Подключить телефон».'));
+    return;
+  }
+  ul.replaceChildren(...state.devices.map((d) => h('li', {},
+    h('span', { class: 'dot' + (d.online ? ' on' : '') }),
+    h('div', { class: 'grow' },
+      h('div', { class: 'title' }, d.name),
+      h('div', { class: 'sub' }, d.online ? 'на связи' : (d.lastSeen ? 'был(а) ' + ago(d.lastSeen) : 'ещё не подключался')),
+    ),
+    h('button', {
+      class: 'icon-btn', title: 'Отключить телефон', 'aria-label': 'Отключить телефон',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = '?'; btn.title = 'Нажмите ещё раз, чтобы отключить'; setTimeout(() => { delete btn.dataset.armed; btn.textContent = '✕'; }, 3000); return; }
+        try { await req('DELETE', `/api/devices/${encodeURIComponent(d.id)}`); toast(`«${d.name}» отключён`); } catch (err) { toast(err.message, true); }
+      },
+    }, '✕'),
+  )));
+}
+
+function renderRecent() {
+  const ul = $('#recent');
+  const byId = new Map(allButtons().map((b) => [b.id, b]));
+  const items = state.recent.map((r) => [r, byId.get(r.id)]).filter(([, b]) => b);
+  if (!items.length) {
+    ul.replaceChildren(h('li', { class: 'empty' }, 'Здесь появится то, что вы запускали с телефона.'));
+    return;
+  }
+  ul.replaceChildren(...items.map(([r, b]) => h('li', {},
+    b.icon ? h('img', { src: iconURL(b.icon), alt: '' }) : h('span', { class: 'dot' }),
+    h('div', { class: 'grow' }, h('div', { class: 'title' }, b.title)),
+    h('span', { class: 'sub' }, ago(r.at)),
+  )));
+}
+
+function renderNet() {
+  const box = $('#netinfo');
+  const addrs = state.lan.addrs;
+  box.replaceChildren(
+    ...(addrs.length
+      ? addrs.map((a) => h('div', { class: 'row' + (a.virtual ? ' muted' : '') },
+          h('code', {}, `${a.ip}:${state.lan.port}`), h('span', { class: 'small muted' }, a.iface)))
+      : [h('div', { class: 'muted' }, 'Нет подключения к локальной сети.')]),
+    renderFirewall(),
+  );
+  const row = $('#autostartRow');
+  row.hidden = !state.autostart.supported;
+  $('#autostart').checked = !!state.autostart.enabled;
+}
+
+const CATEGORY = { Public: 'общедоступная', Private: 'частная', DomainAuthenticated: 'доменная' };
+let fwPending = false;
+
+function renderFirewall() {
+  const fw = state.firewall || {};
+  if (!fw.supported) return null;
+  if (fwPending) return h('div', { class: 'fw pending' }, 'Подтвердите запрос Windows (контроль учётных записей)…');
+  if (!fw.checked) {
+    return h('div', { class: 'fw pending' }, fw.error ? 'Не удалось проверить брандмауэр: ' + fw.error : 'Проверяю брандмауэр…');
+  }
+  const net = fw.network ? `Сеть «${fw.network}»${CATEGORY[fw.category] ? ' — ' + CATEGORY[fw.category] : ''}.` : '';
+  if (fw.allowed) return h('div', { class: 'fw ok' }, '✓ Брандмауэр пропускает телефоны. ' + net);
+  return h('div', { class: 'fw warn' },
+    h('div', {}, h('b', {}, 'Брандмауэр Windows не пустит телефон.'), ' ', net),
+    h('div', { class: 'small muted' }, 'Кнопка добавит правило только для barphone (Windows спросит права администратора). Подключиться смогут лишь сопряжённые телефоны.'),
+    h('button', { class: 'btn primary small', onclick: allowFirewall }, 'Разрешить подключения'),
+    h('div', { class: 'small muted' }, 'Вручную: Панель управления → Брандмауэр Защитника Windows → «Разрешить взаимодействие с приложением» → добавьте barphone-agent.exe и отметьте частную и публичную сеть.'),
+  );
+}
+
+async function allowFirewall() {
+  fwPending = true;
+  renderNet();
+  try {
+    state.firewall = await req('POST', '/api/firewall/allow');
+    state.firewall.supported = true;
+    toast(state.firewall.allowed ? 'Правило брандмауэра добавлено' : 'Правило добавлено, но сеть всё ещё закрыта', !state.firewall.allowed);
+  } catch (e) {
+    toast(/cancel/i.test(e.message) ? 'Запрос отменён' : 'Брандмауэр: ' + e.message, true);
+  }
+  fwPending = false;
+  renderNet();
+}
+
+// ---------- profiles ----------
+const profileOf = (key) => state.profiles.find((p) => p.apps.some((a) => a.keys.includes(key)));
+
+function renderProfiles() {
+  $('#profileTabs').replaceChildren(
+    ...state.profiles.map((p) => h('button', {
+      class: 'pill', role: 'tab', 'aria-selected': String(p.id === editingProfileId),
+      title: p.id === state.activeProfile ? 'Сейчас этот профиль на телефоне' : '',
+      onclick: () => { editingProfileId = p.id; render(); },
+    }, p.id === state.activeProfile ? h('span', { class: 'live' }) : null, p.name)),
+    h('button', { class: 'pill add', onclick: addProfile, title: 'Новый профиль' }, '+ Профиль'),
+  );
+
+  const fg = state.foreground;
+  const active = state.profiles.find((p) => p.id === state.activeProfile);
+  $('#fgNow').replaceChildren(...(fg
+    ? ['Сейчас на компьютере: ', h('b', {}, fg.name || '—'), ` → на телефоне «${active ? active.name : ''}»`]
+    : ['Профиль на телефоне: ', h('b', {}, active ? active.name : '')]));
+
+  const p = curProfile();
+  const isDefault = p.id === 'default';
+  const nameInput = $('#profileName');
+  if (document.activeElement !== nameInput) nameInput.value = p.name;
+  $('#profileAppsRow').hidden = isDefault;
+  $('#profileDelete').hidden = isDefault;
+  $('#profileDefaultHint').hidden = !isDefault;
+  $('#profileApps').replaceChildren(...p.apps.map((a, i) => h('span', { class: 'chip app', title: a.keys.join('\n') },
+    a.name,
+    h('button', {
+      title: 'Отвязать', 'aria-label': `Отвязать ${a.name}`,
+      onclick: () => editProfiles(() => { curProfile().apps.splice(i, 1); }),
+    }, '✕'),
+  )));
+  if (!p.apps.length) $('#profileApps').append(h('span', { class: 'small muted' }, 'ни одного приложения'));
+}
+
+async function addProfile() {
+  const n = state.profiles.length;
+  await editProfiles((ps) => ps.push({ id: '', name: `Профиль ${n}`, apps: [], deck: { columns: curDeck().columns, buttons: [] } }));
+  editingProfileId = state.profiles[state.profiles.length - 1].id;
+  render();
+  $('#profileName').focus();
+  $('#profileName').select();
+}
+
+$('#profileName').addEventListener('change', (e) => {
+  const name = e.target.value.trim();
+  if (!name) { e.target.value = curProfile().name; return; }
+  editProfiles(() => { curProfile().name = name; });
+});
+$('#profileName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+
+$('#profileDelete').onclick = (e) => {
+  const btn = e.currentTarget;
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = '1';
+    btn.textContent = 'Точно удалить профиль и его кнопки?';
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Удалить профиль'; }, 3000);
+    return;
+  }
+  delete btn.dataset.armed;
+  btn.textContent = 'Удалить профиль';
+  const id = editingProfileId;
+  editingProfileId = 'default';
+  editProfiles((ps) => { ps.splice(ps.findIndex((p) => p.id === id), 1); });
+};
+
+// --- binding apps to a profile ---
+$('#bindApp').onclick = () => {
+  $('#bindSearch').value = '';
+  $('#bindDialog').showModal();
+  renderBind();
+  if (!apps) loadApps(false).then(renderBind);
+};
+$('#bindSearch').addEventListener('input', () => renderBind());
+
+async function bindApp(name, keys) {
+  if (!keys.length) { toast(`Не удалось определить «${name}»`, true); return; }
+  const ok = await editProfiles(() => { curProfile().apps.push({ name, keys }); });
+  if (ok) toast(`«${curProfile().name}» будет включаться для ${name}`);
+}
+
+const appKeysCache = new Map(); // installed app target → keys, once asked
+
+// The profile an app is already bound to: by its keys when known, else by the rule name.
+function ownerOf(name, keys) {
+  return keys.map(profileOf).find(Boolean) || state.profiles.find((p) => p.apps.some((a) => a.name === name));
+}
+
+function bindRow(name, sub, owner, onPick, icon) {
+  const mine = owner && owner.id === curProfile().id;
+  return h('li', { class: owner ? 'disabled' : '', onclick: owner ? null : onPick },
+    icon || null,
+    h('span', { class: 'name' }, name),
+    sub ? h('span', { class: 'keys' }, sub) : null,
+    owner ? h('span', { class: mine ? 'added' : 'hint' }, mine ? '✓ привязано' : `в профиле «${owner.name}»`) : null,
+  );
+}
+
+function renderBind() {
+  const recentApps = state.recentApps || [];
+  $('#bindRecent').replaceChildren(...(recentApps.length
+    ? recentApps.map((a) => {
+        const name = a.name || a.keys[0];
+        return bindRow(name, a.keys[0].replace(/^\w+:/, ''), ownerOf(name, a.keys), () => bindApp(name, a.keys));
+      })
+    : [h('li', { class: 'msg' }, 'Пока пусто: переключитесь на нужное приложение на компьютере, и оно появится здесь.')]));
+  const q = $('#bindSearch').value.trim().toLowerCase();
+  const list = (apps || []).filter((a) => !q || a.name.toLowerCase().includes(q)).slice(0, 200);
+  $('#bindApps').replaceChildren(...(apps
+    ? list.map((a) => bindRow(a.name, '', ownerOf(a.name, appKeysCache.get(a.target) || []), async () => {
+        try {
+          const { keys } = await req('GET', `/api/appkeys?kind=${encodeURIComponent(a.kind)}&target=${encodeURIComponent(a.target)}`);
+          appKeysCache.set(a.target, keys);
+          await bindApp(a.name, keys);
+        } catch (err) { toast(err.message, true); }
+      }, h('img', {
+        src: `/api/appicon?kind=${encodeURIComponent(a.kind)}&target=${encodeURIComponent(a.target)}`, alt: '', loading: 'lazy',
+        onerror: (e) => e.currentTarget.replaceWith(h('span', { class: 'ph' })),
+      })))
+    : [h('li', { class: 'msg' }, 'Читаю список приложений…')]));
+}
+
+// ---------- header controls ----------
+$('#machineName').addEventListener('change', async (e) => {
+  const name = e.target.value.trim();
+  if (!name) { e.target.value = state.machine.name; return; }
+  try { await req('PUT', '/api/machine', { name }); toast('Имя сохранено'); } catch (err) { toast(err.message, true); }
+});
+$('#machineName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+
+$('#colsMinus').onclick = () => editDeck((d) => { d.columns = Math.max(2, d.columns - 1); });
+$('#colsPlus').onclick = () => editDeck((d) => { d.columns = Math.min(8, d.columns + 1); });
+
+$('#autostart').addEventListener('change', async (e) => {
+  try { await req('PUT', '/api/autostart', { enabled: e.target.checked }); } catch (err) { toast(err.message, true); refresh(); }
+});
+
+for (const dlg of document.querySelectorAll('dialog')) {
+  dlg.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]') || e.target === dlg) dlg.close();
+  });
+}
+
+// ---------- add dialog ----------
+let apps = null;
+let appsLoading = false;
+
+function openAdd() {
+  const dlg = $('#addDialog');
+  selectTab('apps');
+  dlg.showModal();
+  $('#appSearch').value = '';
+  $('#appSearch').focus();
+  loadApps(false);
+}
+
+function selectTab(name) {
+  for (const t of document.querySelectorAll('#addDialog [role=tab]')) t.setAttribute('aria-selected', String(t.dataset.tab === name));
+  for (const p of document.querySelectorAll('#addDialog .tab-panel')) p.hidden = p.dataset.panel !== name;
+  if (name === 'system') renderSystemList();
+  stopRecording();
+}
+for (const t of document.querySelectorAll('#addDialog [role=tab]')) t.onclick = () => selectTab(t.dataset.tab);
+
+async function loadApps(refreshList) {
+  if (appsLoading || (apps && !refreshList)) return renderApps();
+  appsLoading = true;
+  renderApps();
+  try { apps = await req('GET', '/api/apps' + (refreshList ? '?refresh=1' : '')); } catch (e) { toast('Список приложений: ' + e.message, true); apps = apps || []; }
+  appsLoading = false;
+  renderApps();
+}
+$('#appsRefresh').onclick = () => loadApps(true);
+$('#appSearch').addEventListener('input', () => renderApps());
+
+function renderApps() {
+  const ul = $('#appList');
+  if (appsLoading && !apps) { ul.replaceChildren(h('li', { class: 'msg' }, 'Читаю список приложений…')); return; }
+  const q = $('#appSearch').value.trim().toLowerCase();
+  const added = new Set(curDeck().buttons.filter((b) => b.kind === 'app').map((b) => b.target));
+  const list = (apps || []).filter((a) => !q || a.name.toLowerCase().includes(q));
+  if (!list.length) { ul.replaceChildren(h('li', { class: 'msg' }, q ? 'Ничего не нашлось. Попробуйте вкладку «Файл или программа».' : 'Приложения не найдены.')); return; }
+  const scroll = ul.scrollTop;
+  ul.replaceChildren(...list.map((a) => h('li', { onclick: () => addButton({ kind: a.kind, target: a.target, title: a.name }) },
+    h('img', {
+      src: `/api/appicon?kind=${encodeURIComponent(a.kind)}&target=${encodeURIComponent(a.target)}`, alt: '', loading: 'lazy',
+      onerror: (e) => e.currentTarget.replaceWith(h('span', { class: 'ph' })),
+    }),
+    h('span', { class: 'name' }, a.name),
+    added.has(a.target) ? h('span', { class: 'added' }, '✓ на деке') : null,
+  )));
+  ul.scrollTop = scroll;
+}
+
+// Saves right away and only reports success once the agent has accepted the button.
+async function addButton(b) {
+  curDeck().buttons.push({ id: '', title: b.title || '', kind: b.kind, target: b.target, args: b.args || '' });
+  localVersion++;
+  render();
+  clearTimeout(saveTimer);
+  if (await saveDeck()) toast(`Добавлено: ${b.title || b.target.trim()}`);
+}
+
+$('#pickFile').onclick = async () => {
+  try {
+    const { path } = await req('POST', '/api/pickfile');
+    if (path) {
+      $('#pathTarget').value = path;
+      if (!$('#pathTitle').value) $('#pathTitle').value = path.split(/[\\/]/).pop().replace(/\.(exe|lnk|app|bat|cmd)$/i, '');
+    }
+  } catch (e) { toast(e.message, true); }
+};
+$('#pathForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  addButton({ kind: 'path', target: $('#pathTarget').value.trim(), args: $('#pathArgs').value.trim(), title: $('#pathTitle').value.trim() });
+  e.target.reset();
+  $('#addDialog').close();
+});
+// --- key combinations ---
+const KEY_PRESETS = [
+  ['Win+D', 'Свернуть всё'], ['Alt+Tab', 'Другое окно'], ['Ctrl+C', 'Копировать'], ['Ctrl+V', 'Вставить'],
+  ['Ctrl+Z', 'Отменить'], ['Win+Shift+S', 'Скриншот области'], ['Win+V', 'Буфер обмена'],
+  ['Ctrl+Shift+Escape', 'Диспетчер задач'], ['Alt+F4', 'Закрыть окно'], ['F5', 'Обновить'],
+];
+$('#keysPresets').replaceChildren(...KEY_PRESETS.map(([combo, title]) => h('button', {
+  type: 'button', class: 'chip', title: combo,
+  onclick: () => { $('#keysTarget').value = combo; $('#keysTitle').value = title; },
+}, h('b', {}, combo), title)));
+
+// Browser key codes → names the agent understands (see agent/internal/launch/keys.go).
+const CODE_NAMES = {
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', ContextMenu: 'Menu',
+  Semicolon: ';', Equal: '=', Comma: ',', Minus: '-', Period: '.', Slash: '/', Backquote: '`',
+  BracketLeft: '[', Backslash: '\\', BracketRight: ']', Quote: "'",
+};
+function keyName(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^(Digit|Numpad)[0-9]$/.test(code)) return code.slice(-1);
+  if (/^F\d{1,2}$/.test(code)) return code;
+  if (CODE_NAMES[code]) return CODE_NAMES[code];
+  if (['Enter', 'Escape', 'Tab', 'Space', 'Backspace', 'Delete', 'Insert', 'Home', 'End', 'PageUp', 'PageDown',
+    'PrintScreen', 'Pause', 'CapsLock', 'NumLock', 'ScrollLock'].includes(code)) return code;
+  return null;
+}
+
+let recording = false;
+function stopRecording() {
+  recording = false;
+  $('#keysTarget').classList.remove('recording');
+  $('#keysRecord').textContent = 'Записать';
+}
+$('#keysRecord').onclick = () => {
+  if (recording) return stopRecording();
+  recording = true;
+  $('#keysTarget').classList.add('recording');
+  $('#keysRecord').textContent = 'Нажмите сочетание…';
+  $('#keysTarget').focus();
+};
+$('#keysTarget').addEventListener('keydown', (e) => {
+  if (!recording) return;
+  e.preventDefault();
+  const key = keyName(e.code);
+  if (!key) return; // a modifier on its own: wait for the main key
+  const mods = [e.metaKey && 'Win', e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift'].filter(Boolean);
+  $('#keysTarget').value = [...mods, key].join('+');
+  stopRecording();
+});
+$('#keysForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  addButton({ kind: 'keys', target: $('#keysTarget').value.trim(), title: $('#keysTitle').value.trim() });
+  e.target.reset();
+  $('#addDialog').close();
+});
+
+// --- text ---
+$('#textForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  let text = $('#textTarget').value;
+  if ($('#textEnter').checked && !text.endsWith('\n')) text += '\n';
+  addButton({ kind: 'text', target: text, title: $('#textTitle').value.trim() });
+  e.target.reset();
+  $('#addDialog').close();
+});
+
+// --- system actions ---
+function renderSystemList() {
+  const added = new Set(curDeck().buttons.filter((b) => b.kind === 'system').map((b) => b.target));
+  $('#systemList').replaceChildren(...(state.systemActions || []).map((a) => h('li', {
+    onclick: () => addButton({ kind: 'system', target: a.id, title: a.title }),
+  },
+    h('span', { class: 'glyph-ico' }, GLYPH[a.id] || '⚙️'),
+    h('span', { class: 'name' }, a.title),
+    a.slider ? h('span', { class: 'hint' }, 'тап — без звука, удержание — ползунок') : null,
+    a.confirm ? h('span', { class: 'hint' }, 'спросит подтверждение') : null,
+    added.has(a.id) ? h('span', { class: 'added' }, '✓ на деке') : null,
+  )));
+}
+
+$('#urlForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  addButton({ kind: 'url', target: $('#urlTarget').value.trim(), title: $('#urlTitle').value.trim() });
+  e.target.reset();
+  $('#addDialog').close();
+});
+
+// ---------- edit dialog ----------
+let editingId = null;
+const editing = () => findButton(editingId);
+
+function openEdit(id) {
+  editingId = id;
+  const b = editing();
+  if (!b) return;
+  const action = b.kind === 'system' ? systemAction(b.target) : null;
+  $('#editTitle').value = b.title;
+  $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие' }[b.kind] || 'Что запускать';
+  $('#editTarget').value = action ? action.title : b.target;
+  $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
+  $('#editTargetRow').hidden = b.kind === 'text';
+  $('#editTextRow').hidden = b.kind !== 'text';
+  $('#editText').value = b.kind === 'text' ? b.target : '';
+  $('#editArgs').value = b.args || '';
+  $('#editArgsRow').hidden = b.kind !== 'path';
+  $('#editRunning').value = b.onRunning || '';
+  $('#editRunningRow').hidden = !['app', 'path'].includes(b.kind);
+  // Typing keys/text would land in this browser tab, and power actions need the phone's confirmation.
+  $('#editTest').hidden = ['keys', 'text'].includes(b.kind) || Boolean(action && action.confirm);
+  const hints = {
+    app: ' · чтобы выбрать другое, добавьте новую кнопку',
+    keys: ' · уходит в активное окно на компьютере',
+    text: ' · вводится в активное окно, перенос строки — Enter',
+  };
+  $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
+    (action && action.slider ? ' · на телефоне: тап — без звука, удержание и ведение пальцем — громкость' : '') +
+    (action && action.confirm ? ' · телефон спросит подтверждение' : '');
+  const del = $('#editDelete');
+  delete del.dataset.armed;
+  del.textContent = 'Удалить';
+  renderEditPreview();
+  $('#editDialog').showModal();
+}
+
+function renderEditPreview() {
+  const b = editing();
+  if (!b) { $('#editDialog').close(); return; }
+  $('#editPreview').replaceChildren(...tileFace(b));
+}
+
+function bindEditField(sel, field) {
+  $(sel).addEventListener('input', (e) => {
+    const value = e.target.value;
+    const b = editing();
+    // Don't save a combination that is still being typed ("Ctrl+Shift+").
+    if (b && b.kind === 'keys' && field === 'target' && (!value.trim() || /\+\s*$/.test(value))) return;
+    editDeck(() => { const cur = editing(); if (cur) cur[field] = value; }, 600);
+  });
+}
+bindEditField('#editTitle', 'title');
+bindEditField('#editTarget', 'target');
+bindEditField('#editArgs', 'args');
+bindEditField('#editText', 'target');
+$('#editRunning').addEventListener('change', (e) => {
+  const value = e.target.value;
+  editDeck(() => { const b = editing(); if (b) b.onRunning = value; });
+});
+$('#editForm').addEventListener('submit', (e) => { e.preventDefault(); $('#editDialog').close(); });
+$('#editDialog').addEventListener('close', () => {
+  if (localVersion !== savedVersion) { clearTimeout(saveTimer); saveDeck(); }
+});
+
+$('#editDelete').onclick = (e) => {
+  const btn = e.currentTarget;
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = '1';
+    btn.textContent = 'Точно удалить?';
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Удалить'; }, 3000);
+    return;
+  }
+  const id = editingId;
+  $('#editDialog').close();
+  editDeck(() => { for (const p of state.profiles) p.deck.buttons = p.deck.buttons.filter((b) => b.id !== id); });
+};
+
+$('#editTest').onclick = async () => {
+  if (localVersion !== savedVersion) { clearTimeout(saveTimer); await saveDeck(); }
+  try { await req('POST', `/api/buttons/${encodeURIComponent(editingId)}/launch`); toast('Запущено'); } catch (e) { toast('Не запустилось: ' + e.message, true); }
+};
+
+$('#iconFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try { await req('PUT', `/api/buttons/${encodeURIComponent(editingId)}/icon`, file, file.type || 'application/octet-stream'); } catch (err) { toast('Иконка: ' + err.message, true); }
+});
+$('#iconReset').onclick = async () => {
+  try { await req('DELETE', `/api/buttons/${encodeURIComponent(editingId)}/icon`); } catch (err) { toast(err.message, true); }
+};
+
+// ---------- pairing ----------
+let pairWatch = null; // { devicesBefore, success }
+let pairTick = null;
+
+$('#pairBtn').onclick = startPairing;
+
+async function startPairing() {
+  // Never show the previous (now invalid) code while the new one is on its way.
+  const body = $('#pairBody');
+  pairWatch = null;
+  delete body.dataset.code;
+  body.replaceChildren(h('div', { class: 'muted' }, 'Создаю код…'));
+  const dlg = $('#pairDialog');
+  if (!dlg.open) dlg.showModal();
+  try {
+    state.pairing = await req('POST', '/api/pairing');
+  } catch (e) { toast(e.message, true); dlg.close(); return; }
+  pairWatch = { devicesBefore: new Set(state.devices.map((d) => d.id + d.pairedAt)), success: null };
+  renderPair();
+  clearInterval(pairTick);
+  pairTick = setInterval(renderPairCountdown, 1000);
+}
+
+$('#pairDialog').addEventListener('close', () => {
+  clearInterval(pairTick);
+  if (state.pairing && state.pairing.active) req('DELETE', '/api/pairing').catch(() => {});
+  pairWatch = null;
+});
+
+function renderPair() {
+  const body = $('#pairBody');
+  if (!pairWatch) return;
+  const fresh = state.devices.find((d) => !pairWatch.devicesBefore.has(d.id + d.pairedAt));
+  if (fresh && !pairWatch.success) {
+    pairWatch.success = fresh;
+    clearInterval(pairTick);
+    setTimeout(() => { if ($('#pairDialog').open && pairWatch && pairWatch.success) $('#pairDialog').close(); }, 2200);
+  }
+  if (pairWatch.success) {
+    body.replaceChildren(
+      h('div', { class: 'ok' }, '✓'),
+      h('div', {}, h('b', {}, pairWatch.success.name), ' подключён'),
+      h('div', { class: 'muted' }, 'Дека уже на экране телефона.'),
+    );
+    return;
+  }
+  const p = state.pairing;
+  if (!p || !p.active) {
+    body.replaceChildren(
+      h('div', { class: 'muted' }, 'Код больше не действует (истёк или было слишком много неверных попыток).'),
+      h('button', { class: 'btn primary', onclick: startPairing }, 'Новый код'),
+    );
+    return;
+  }
+  if (body.dataset.code === p.code && body.firstChild) { renderPairCountdown(); return; }
+  body.dataset.code = p.code;
+  const ips = state.lan.addrs.map((a) => a.ip);
+  body.replaceChildren(
+    h('img', { class: 'qr', src: p.qr, alt: 'QR-код для подключения' }),
+    h('div', { class: 'code' }, p.code.slice(0, 3) + ' ' + p.code.slice(3)),
+    h('div', { class: 'muted', id: 'pairCountdown' }),
+    h('ol', {},
+      h('li', {}, 'Откройте barphone на телефоне'),
+      h('li', {}, 'Смахните вниз → «Добавить компьютер»'),
+      h('li', {}, 'Наведите камеру на QR или введите код'),
+    ),
+    ips.length
+      ? h('div', { class: 'small muted' }, `Телефон должен быть в той же сети: ${ips.join(', ')} · порт ${state.lan.port}`)
+      : h('div', { class: 'small', style: 'color: var(--danger)' }, 'Компьютер не подключён к локальной сети.'),
+  );
+  renderPairCountdown();
+}
+
+function renderPairCountdown() {
+  const el = $('#pairCountdown');
+  const p = state && state.pairing;
+  if (!el || !p || !p.active) return;
+  const left = Math.max(0, Math.round((new Date(p.expiresAt).getTime() - Date.now()) / 1000));
+  if (left === 0) { state.pairing = { active: false }; delete $('#pairBody').dataset.code; renderPair(); return; }
+  el.textContent = `Код действует ещё ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
+// ---------- start ----------
+refresh()
+  .then(() => {
+    connectEvents();
+    if (location.hash === '#pair') { history.replaceState(null, '', '/'); startPairing(); }
+  })
+  .catch((e) => toast('Агент недоступен: ' + e.message, true));
+setInterval(() => { if (state) { renderDevices(); renderRecent(); } }, 30000);
