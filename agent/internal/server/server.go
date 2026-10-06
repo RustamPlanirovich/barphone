@@ -140,6 +140,8 @@ type wireButton struct {
 	Control string `json:"control,omitempty"`
 	// Confirm: ask before pressing; the agent refuses the press without "confirmed".
 	Confirm bool `json:"confirm,omitempty"`
+	// Buttons: a folder's buttons.
+	Buttons []wireButton `json:"buttons,omitempty"`
 }
 
 type stateMsg struct {
@@ -192,6 +194,9 @@ func wireButtons(buttons []store.Button) []wireButton {
 		switch b.Kind {
 		case store.KindKeys, store.KindText:
 			wb.Glyph = string(b.Kind)
+		case store.KindFolder:
+			wb.Glyph = string(b.Kind)
+			wb.Buttons = wireButtons(b.Buttons)
 		case store.KindSystem:
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
@@ -339,6 +344,9 @@ func (s *Server) iconWorker(ctx context.Context) {
 
 // iconFor extracts (once per target) and stores a native icon; "" if there is none.
 func (s *Server) iconFor(kind store.ButtonKind, target string) string {
+	if kind == store.KindFolder {
+		return "" // a built-in glyph unless the user sets an icon
+	}
 	key := iconKey(kind, target)
 	s.iconMu.Lock()
 	if hash, ok := s.appIcons[key]; ok {

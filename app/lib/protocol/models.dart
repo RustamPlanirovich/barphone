@@ -23,17 +23,30 @@ class MachineInfo {
 class DeckButton {
   final String id;
   final String title;
-  final String kind; // app | path | url | keys | text | system
+  final String kind; // app | path | url | keys | text | system | folder
   final String? icon;
   final String? glyph; // built-in picture: "keys", "text" or a system action id
   final String? control; // "slider": hold and drag (volume)
   final bool confirm; // ask before pressing (shutdown, restart)
+  final List<DeckButton> buttons; // a folder's buttons
 
-  const DeckButton({required this.id, required this.title, required this.kind, this.icon, this.glyph, this.control, this.confirm = false});
+  const DeckButton({
+    required this.id,
+    required this.title,
+    required this.kind,
+    this.icon,
+    this.glyph,
+    this.control,
+    this.confirm = false,
+    this.buttons = const [],
+  });
 
   /// Starts a program on the PC, so it can have open windows to choose from.
   bool get launchesApp => kind == 'app' || kind == 'path';
   bool get isSlider => control == 'slider';
+
+  /// Opens on the phone, showing its own buttons; the agent is not asked.
+  bool get isFolder => kind == 'folder';
 
   factory DeckButton.fromJson(Map<String, dynamic> j) => DeckButton(
     id: j['id'] as String,
@@ -43,6 +56,7 @@ class DeckButton {
     glyph: j['glyph'] as String?,
     control: j['control'] as String?,
     confirm: j['confirm'] == true,
+    buttons: ((j['buttons'] as List?) ?? const []).map((b) => DeckButton.fromJson((b as Map).cast<String, dynamic>())).toList(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -53,6 +67,7 @@ class DeckButton {
     if (glyph != null) 'glyph': glyph,
     if (control != null) 'control': control,
     if (confirm) 'confirm': true,
+    if (buttons.isNotEmpty) 'buttons': [for (final b in buttons) b.toJson()],
   };
 }
 
@@ -128,12 +143,20 @@ class DeckState {
   int get columns => shown(null).columns;
   List<DeckButton> get buttons => shown(null).buttons;
 
-  /// Finds a button in any profile.
+  /// Finds a button in any profile, folders included.
   DeckButton? button(String id) {
-    for (final p in profiles) {
-      for (final b in p.buttons) {
+    DeckButton? find(List<DeckButton> list) {
+      for (final b in list) {
         if (b.id == id) return b;
+        final inside = find(b.buttons);
+        if (inside != null) return inside;
       }
+      return null;
+    }
+
+    for (final p in profiles) {
+      final b = find(p.buttons);
+      if (b != null) return b;
     }
     return null;
   }

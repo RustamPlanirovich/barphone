@@ -137,12 +137,60 @@ void showPressError(BuildContext context, DeckButton b, String? error) {
     ..showSnackBar(SnackBar(content: Text('${b.title}: ${launchError(error)}'), duration: const Duration(seconds: 2)));
 }
 
+/// First tile of an open folder: back to the profile's buttons.
+class BackTile extends StatelessWidget {
+  const BackTile({super.key, required this.title, required this.size, required this.onTap});
+  final String title;
+  final double size;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = size;
+    return Semantics(
+      button: true,
+      label: 'Назад из папки $title',
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Container(
+          width: s,
+          height: s,
+          padding: EdgeInsets.fromLTRB(s * .08, s * .1, s * .08, s * .07),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(s * .2),
+            border: Border.all(color: C.border, width: 2),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Icon(Icons.arrow_back_rounded, size: s * .4, color: C.muted),
+              ),
+              SizedBox(height: s * .04),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: (s * .11).clamp(10.0, 15.0), color: C.muted, height: 1.1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class DeckTile extends StatefulWidget {
-  const DeckTile({super.key, required this.button, required this.link, required this.size, required this.enabled});
+  const DeckTile({super.key, required this.button, required this.link, required this.size, required this.enabled, this.onOpenFolder});
   final DeckButton button;
   final MachineLink link;
   final double size;
   final bool enabled;
+  final void Function(DeckButton folder)? onOpenFolder;
 
   @override
   State<DeckTile> createState() => _DeckTileState();
@@ -182,7 +230,14 @@ class _DeckTileState extends State<DeckTile> {
         onTapDown: widget.enabled ? (_) => setState(() => _down = true) : null,
         onTapCancel: () => setState(() => _down = false),
         onTapUp: (_) => setState(() => _down = false),
-        onTap: widget.enabled ? () => pressButton(context, widget.link, b, _setFlash) : null,
+        onTap: !widget.enabled
+            ? null
+            : b.isFolder
+            ? () {
+                HapticFeedback.selectionClick();
+                widget.onOpenFolder?.call(b);
+              }
+            : () => pressButton(context, widget.link, b, _setFlash),
         // Long press: app buttons offer their open windows, the volume button turns into a slider.
         onLongPress: widget.enabled && b.launchesApp ? () => showButtonWindows(context, widget.link, b, _setFlash) : null,
         onLongPressStart: widget.enabled && b.isSlider ? (_) => (_drag = VolumeDrag(context, widget.link, b)).start() : null,

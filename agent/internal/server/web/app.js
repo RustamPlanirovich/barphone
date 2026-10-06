@@ -53,10 +53,10 @@ function ago(iso) {
 const iconURL = (hash) => `/api/icon/${hash}.png`;
 const KIND_LABEL = {
   app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
-  keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие',
+  keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие', folder: 'Папка',
 };
 const GLYPH = {
-  keys: '⌨️', text: '📝',
+  keys: '⌨️', text: '📝', folder: '📁',
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   lock: '🔒', sleep: '🌙', display_off: '🖥️', shutdown: '🔌', restart: '🔄',
@@ -71,6 +71,7 @@ function tileFace(b) {
       ? h('img', { src: iconURL(b.icon), alt: '' })
       : h('div', { class: 'glyph' }, glyph || (b.kind === 'url' ? '↗' : (b.title || '?').trim().charAt(0).toUpperCase())),
     h('div', { class: 'label' }, b.title),
+    b.kind === 'folder' ? h('span', { class: 'count' }, (b.buttons || []).length) : null,
   ];
 }
 
@@ -85,7 +86,13 @@ let saveTimer = null;
 let editingProfileId = 'default';
 const curProfile = () => state.profiles.find((p) => p.id === editingProfileId) || state.profiles[0];
 const curDeck = () => curProfile().deck;
-const allButtons = () => state.profiles.flatMap((p) => p.deck.buttons);
+// A folder of the edited profile can be open: the grid, "+" and drag & drop then work on
+// its buttons (curList) instead of the profile's top level.
+let viewFolderId = null;
+const curFolder = () => (viewFolderId && curDeck().buttons.find((b) => b.id === viewFolderId && b.kind === 'folder')) || null;
+const curList = () => { const f = curFolder(); return f ? (f.buttons = f.buttons || []) : curDeck().buttons; };
+const flatButtons = (bs) => bs.flatMap((b) => [b, ...(b.buttons || [])]);
+const allButtons = () => state.profiles.flatMap((p) => flatButtons(p.deck.buttons));
 const findButton = (id) => allButtons().find((b) => b.id === id);
 // The agent omits empty lists in some answers; the page always wants arrays.
 const normProfiles = (ps) => ps.map((p) => ({ ...p, apps: p.apps || [], deck: { ...p.deck, buttons: (p.deck && p.deck.buttons) || [] } }));
@@ -158,6 +165,8 @@ function render() {
   if (document.activeElement !== name) name.value = state.machine.name;
   document.title = `barphone — ${state.machine.name}`;
   renderProfiles();
+  if (viewFolderId && !curFolder()) viewFolderId = null; // deleted, or another profile
+  renderFolderBar();
   renderDeck();
   renderDevices();
   renderRecent();
@@ -177,41 +186,88 @@ let renderedDeck = '';
 // Rebuilding the grid on every SSE event (phones connecting, icons arriving) would eat
 // clicks and break drags that straddle a refresh, so only redraw when the deck changed.
 function renderDeck(force = false) {
-  const key = editingProfileId + JSON.stringify(curDeck());
+  const folder = curFolder();
+  const key = editingProfileId + '/' + (folder ? folder.id : '') + JSON.stringify(curDeck());
   if (!force && (key === renderedDeck || dragIndex !== null)) return;
   renderedDeck = key;
-  const { columns, buttons } = curDeck();
+  const { columns } = curDeck();
+  const buttons = curList();
   $('#colsValue').value = columns;
   const grid = $('#grid');
   grid.style.setProperty('--cols', columns);
+  const clearMarks = (el) => el.classList.remove('drop-before', 'drop-after', 'drop-into');
+  // The middle half of a folder takes the dragged button in; the edges reorder.
+  const intoZone = (e, el) => e.offsetX > el.clientWidth * 0.25 && e.offsetX < el.clientWidth * 0.75;
+  const back = folder && h('div', {
+    class: 'tile back', 'data-back': true, title: 'Ко всему профилю. Перетащите сюда кнопку, чтобы вынуть её из папки.',
+    ondragover: (e) => { if (dragIndex === null) return; e.preventDefault(); e.currentTarget.classList.add('drop-into'); },
+    ondragleave: (e) => clearMarks(e.currentTarget),
+    ondrop: (e) => {
+      e.preventDefault();
+      const from = dragIndex;
+      dragIndex = null;
+      if (from !== null) moveButton(buttons[from].id, null);
+    },
+  }, h('div', { class: 'glyph' }, '←'), h('div', { class: 'label' }, 'Назад'));
   grid.replaceChildren(
+    ...(back ? [back] : []),
     ...buttons.map((b, i) => h('div', {
-      class: 'tile', draggable: 'true', 'data-id': b.id, title: `${b.title}\n${KIND_LABEL[b.kind]}: ${b.target}`,
+      class: 'tile', draggable: 'true', 'data-id': b.id,
+      title: b.kind === 'folder' ? `${b.title}\nПапка: кнопок ${(b.buttons || []).length}. Клик — открыть.` : `${b.title}\n${KIND_LABEL[b.kind]}: ${b.target}`,
       ondragstart: (e) => { dragIndex = i; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; },
       ondragend: () => { dragIndex = null; renderDeck(true); },
       ondragover: (e) => {
         if (dragIndex === null) return;
         e.preventDefault();
         const el = e.currentTarget;
-        const after = e.offsetX > el.clientWidth / 2;
-        el.classList.toggle('drop-after', after);
-        el.classList.toggle('drop-before', !after);
+        clearMarks(el);
+        if (b.kind === 'folder' && dragIndex !== i && buttons[dragIndex].kind !== 'folder' && intoZone(e, el)) {
+          el.classList.add('drop-into');
+          return;
+        }
+        el.classList.add(e.offsetX > el.clientWidth / 2 ? 'drop-after' : 'drop-before');
       },
-      ondragleave: (e) => e.currentTarget.classList.remove('drop-before', 'drop-after'),
+      ondragleave: (e) => clearMarks(e.currentTarget),
       ondrop: (e) => {
         e.preventDefault();
         const from = dragIndex;
         if (from === null) return;
+        dragIndex = null;
+        if (e.currentTarget.classList.contains('drop-into')) return moveButton(buttons[from].id, b.id);
         let to = i + (e.offsetX > e.currentTarget.clientWidth / 2 ? 1 : 0);
         if (from < to) to--;
-        dragIndex = null;
         if (from === to) return renderDeck(true);
-        editDeck((d) => { const [m] = d.buttons.splice(from, 1); d.buttons.splice(to, 0, m); });
+        editDeck(() => { const list = curList(); const [m] = list.splice(from, 1); list.splice(to, 0, m); });
       },
     }, tileFace(b))),
-    h('div', { class: 'tile add', 'data-add': true, title: 'Добавить кнопку' }, '+'),
+    h('div', { class: 'tile add', 'data-add': true, title: folder ? `Добавить кнопку в «${folder.title}»` : 'Добавить кнопку' }, '+'),
   );
 }
+
+// Moves a button of the edited profile into a folder, or to the top level (folderId null).
+function moveButton(id, folderId) {
+  editDeck((d) => {
+    let moved = null;
+    const take = (list) => {
+      const i = list.findIndex((b) => b.id === id);
+      if (i >= 0) moved = list.splice(i, 1)[0];
+    };
+    take(d.buttons);
+    for (const b of d.buttons) if (!moved && b.buttons) take(b.buttons);
+    if (!moved) return;
+    const folder = folderId && moved.kind !== 'folder' ? d.buttons.find((b) => b.id === folderId) : null;
+    if (folder) (folder.buttons = folder.buttons || []).push(moved);
+    else d.buttons.push(moved);
+  });
+}
+
+function renderFolderBar() {
+  const f = curFolder();
+  $('#folderBar').hidden = !f;
+  if (f) $('#folderName').textContent = f.title;
+}
+$('#folderBack').onclick = () => { viewFolderId = null; render(); };
+$('#folderEdit').onclick = () => { const f = curFolder(); if (f) openEdit(f.id); };
 
 // One delegated handler: if the grid was rebuilt between mousedown and mouseup the click
 // lands on the grid itself, so resolve the tile from the pointer position.
@@ -219,7 +275,11 @@ $('#grid').addEventListener('click', (e) => {
   const tile = e.target.closest('.tile') || document.elementFromPoint(e.clientX, e.clientY)?.closest('#grid .tile');
   if (!tile) return;
   if (tile.dataset.add !== undefined) openAdd();
-  else if (tile.dataset.id) openEdit(tile.dataset.id);
+  else if (tile.dataset.back !== undefined) { viewFolderId = null; render(); }
+  else if (tile.dataset.id) {
+    const b = findButton(tile.dataset.id);
+    if (b && b.kind === 'folder') { viewFolderId = b.id; render(); } else openEdit(tile.dataset.id);
+  }
 });
 
 function renderDevices() {
@@ -317,7 +377,7 @@ function renderProfiles() {
     ...state.profiles.map((p) => h('button', {
       class: 'pill', role: 'tab', 'aria-selected': String(p.id === editingProfileId),
       title: p.id === state.activeProfile ? 'Сейчас этот профиль на телефоне' : '',
-      onclick: () => { editingProfileId = p.id; render(); },
+      onclick: () => { editingProfileId = p.id; viewFolderId = null; render(); },
     }, p.id === state.activeProfile ? h('span', { class: 'live' }) : null, p.name)),
     h('button', { class: 'pill add', onclick: addProfile, title: 'Новый профиль' }, '+ Профиль'),
   );
@@ -349,6 +409,7 @@ async function addProfile() {
   const n = state.profiles.length;
   await editProfiles((ps) => ps.push({ id: '', name: `Профиль ${n}`, apps: [], deck: { columns: curDeck().columns, buttons: [] } }));
   editingProfileId = state.profiles[state.profiles.length - 1].id;
+  viewFolderId = null;
   render();
   $('#profileName').focus();
   $('#profileName').select();
@@ -459,6 +520,10 @@ let appsLoading = false;
 
 function openAdd() {
   const dlg = $('#addDialog');
+  const folder = curFolder();
+  $('#addHeading').textContent = folder ? `Добавить в папку «${folder.title}»` : 'Добавить кнопку';
+  $('#folderForm').hidden = Boolean(folder);
+  $('#folderInFolder').hidden = !folder;
   selectTab('apps');
   dlg.showModal();
   $('#appSearch').value = '';
@@ -489,7 +554,7 @@ function renderApps() {
   const ul = $('#appList');
   if (appsLoading && !apps) { ul.replaceChildren(h('li', { class: 'msg' }, 'Читаю список приложений…')); return; }
   const q = $('#appSearch').value.trim().toLowerCase();
-  const added = new Set(curDeck().buttons.filter((b) => b.kind === 'app').map((b) => b.target));
+  const added = new Set(curList().filter((b) => b.kind === 'app').map((b) => b.target));
   const list = (apps || []).filter((a) => !q || a.name.toLowerCase().includes(q));
   if (!list.length) { ul.replaceChildren(h('li', { class: 'msg' }, q ? 'Ничего не нашлось. Попробуйте вкладку «Файл или программа».' : 'Приложения не найдены.')); return; }
   const scroll = ul.scrollTop;
@@ -506,12 +571,22 @@ function renderApps() {
 
 // Saves right away and only reports success once the agent has accepted the button.
 async function addButton(b) {
-  curDeck().buttons.push({ id: '', title: b.title || '', kind: b.kind, target: b.target, args: b.args || '' });
+  const folder = curFolder();
+  const nb = { id: '', title: b.title || '', kind: b.kind, target: b.target || '', args: b.args || '' };
+  if (b.kind === 'folder') nb.buttons = [];
+  curList().push(nb);
   localVersion++;
   render();
   clearTimeout(saveTimer);
-  if (await saveDeck()) toast(`Добавлено: ${b.title || b.target.trim()}`);
+  if (await saveDeck()) toast(`Добавлено${folder ? ` в «${folder.title}»` : ''}: ${b.title || nb.target.trim()}`);
 }
+
+$('#folderForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  addButton({ kind: 'folder', title: $('#folderTitle').value.trim() });
+  e.target.reset();
+  $('#addDialog').close();
+});
 
 $('#pickFile').onclick = async () => {
   try {
@@ -596,7 +671,7 @@ $('#textForm').addEventListener('submit', (e) => {
 
 // --- system actions ---
 function renderSystemList() {
-  const added = new Set(curDeck().buttons.filter((b) => b.kind === 'system').map((b) => b.target));
+  const added = new Set(curList().filter((b) => b.kind === 'system').map((b) => b.target));
   $('#systemList').replaceChildren(...(state.systemActions || []).map((a) => h('li', {
     onclick: () => addButton({ kind: 'system', target: a.id, title: a.title }),
   },
@@ -628,7 +703,7 @@ function openEdit(id) {
   $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие' }[b.kind] || 'Что запускать';
   $('#editTarget').value = action ? action.title : b.target;
   $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
-  $('#editTargetRow').hidden = b.kind === 'text';
+  $('#editTargetRow').hidden = b.kind === 'text' || b.kind === 'folder';
   $('#editTextRow').hidden = b.kind !== 'text';
   $('#editText').value = b.kind === 'text' ? b.target : '';
   $('#editArgs').value = b.args || '';
@@ -636,21 +711,38 @@ function openEdit(id) {
   $('#editRunning').value = b.onRunning || '';
   $('#editRunningRow').hidden = !['app', 'path'].includes(b.kind);
   // Typing keys/text would land in this browser tab, and power actions need the phone's confirmation.
-  $('#editTest').hidden = ['keys', 'text'].includes(b.kind) || Boolean(action && action.confirm);
+  $('#editTest').hidden = ['keys', 'text', 'folder'].includes(b.kind) || Boolean(action && action.confirm);
+  renderEditPlace(b);
   const hints = {
     app: ' · чтобы выбрать другое, добавьте новую кнопку',
     keys: ' · уходит в активное окно на компьютере',
     text: ' · вводится в активное окно, перенос строки — Enter',
+    folder: ' · на телефоне открывается тапом; кнопки внутри — в самой папке на деке',
   };
   $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
     (action && action.slider ? ' · на телефоне: тап — без звука, удержание и ведение пальцем — громкость' : '') +
     (action && action.confirm ? ' · телефон спросит подтверждение' : '');
   const del = $('#editDelete');
   delete del.dataset.armed;
-  del.textContent = 'Удалить';
+  del.textContent = b.kind === 'folder' ? 'Удалить папку' : 'Удалить';
   renderEditPreview();
   $('#editDialog').showModal();
 }
+
+// "Где лежит": the top level of the profile or one of its folders.
+function renderEditPlace(b) {
+  const folders = curDeck().buttons.filter((x) => x.kind === 'folder');
+  const row = $('#editPlaceRow');
+  row.hidden = b.kind === 'folder' || !folders.length;
+  if (row.hidden) return;
+  const owner = folders.find((f) => (f.buttons || []).some((x) => x.id === b.id));
+  $('#editPlace').replaceChildren(
+    h('option', { value: '' }, `Прямо в профиле «${curProfile().name}»`),
+    ...folders.map((f) => h('option', { value: f.id }, `📁 ${f.title}`)),
+  );
+  $('#editPlace').value = owner ? owner.id : '';
+}
+$('#editPlace').addEventListener('change', (e) => moveButton(editingId, e.target.value || null));
 
 function renderEditPreview() {
   const b = editing();
@@ -682,15 +774,19 @@ $('#editDialog').addEventListener('close', () => {
 
 $('#editDelete').onclick = (e) => {
   const btn = e.currentTarget;
+  const b = editing();
+  const isFolder = Boolean(b && b.kind === 'folder');
   if (!btn.dataset.armed) {
+    const inside = isFolder ? (b.buttons || []).length : 0;
     btn.dataset.armed = '1';
-    btn.textContent = 'Точно удалить?';
-    setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Удалить'; }, 3000);
+    btn.textContent = inside ? `Удалить папку и ${inside} кн. в ней?` : 'Точно удалить?';
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = isFolder ? 'Удалить папку' : 'Удалить'; }, 3000);
     return;
   }
   const id = editingId;
   $('#editDialog').close();
-  editDeck(() => { for (const p of state.profiles) p.deck.buttons = p.deck.buttons.filter((b) => b.id !== id); });
+  const drop = (list) => list.filter((x) => x.id !== id).map((x) => (x.buttons ? { ...x, buttons: drop(x.buttons) } : x));
+  editDeck(() => { for (const p of state.profiles) p.deck.buttons = drop(p.deck.buttons); });
 };
 
 $('#editTest').onclick = async () => {

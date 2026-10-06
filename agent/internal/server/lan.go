@@ -247,6 +247,10 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 		res.Error = "not_found"
 		return res
 	}
+	if !agentHandles(b.Kind) {
+		res.Error = "unsupported" // an app too old to open folders itself
+		return res
+	}
 	listWindows := func() []launch.Window {
 		ws, err := s.Launcher.Windows(b)
 		if err != nil {
@@ -359,6 +363,10 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 	res.OK = true
 	return res
 }
+
+// agentHandles reports whether pressing a kind is the agent's business: a folder opens
+// on the phone without asking the agent.
+func agentHandles(k store.ButtonKind) bool { return k != store.KindFolder }
 
 func mustJSON(v any) []byte {
 	data, err := json.Marshal(v)

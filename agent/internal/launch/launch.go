@@ -108,6 +108,8 @@ func Validate(b store.Button) error {
 			return fmt.Errorf("неизвестное действие %q", b.Target)
 		}
 		return nil
+	case store.KindFolder:
+		return nil // its buttons are checked one by one
 	}
 	t := strings.TrimSpace(b.Target)
 	if t == "" || len(t) > 2048 {

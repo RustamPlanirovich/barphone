@@ -24,11 +24,13 @@ const (
 	KindKeys   ButtonKind = "keys"   // key combination, e.g. "Ctrl+Shift+P"
 	KindText   ButtonKind = "text"   // text typed into the focused window; a newline presses Enter
 	KindSystem ButtonKind = "system" // media/volume/power action, see launch.SystemActions
+
+	KindFolder ButtonKind = "folder" // opens its own Buttons on the phone; one level deep
 )
 
 func (k ButtonKind) Valid() bool {
 	switch k {
-	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem:
+	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder:
 		return true
 	}
 	return false
@@ -47,6 +49,8 @@ type Button struct {
 	// OnRunning: "" (default) switches to the app's open window, asking the phone to
 	// choose when there are several; "new" always starts another instance.
 	OnRunning string `json:"onRunning,omitempty"`
+
+	Buttons []Button `json:"buttons,omitempty"` // a folder's buttons
 }
 
 const OnRunningNew = "new"
@@ -142,23 +146,42 @@ func (c *Config) Button(id string) (Button, bool) {
 
 // ButtonRef returns a pointer into the config for in-place edits, or nil.
 func (c *Config) ButtonRef(id string) *Button {
-	for p := range c.Profiles {
-		for i := range c.Profiles[p].Deck.Buttons {
-			if c.Profiles[p].Deck.Buttons[i].ID == id {
-				return &c.Profiles[p].Deck.Buttons[i]
-			}
+	var found *Button
+	c.walk(func(b *Button) bool {
+		if b.ID == id {
+			found = b
 		}
-	}
-	return nil
+		return found == nil
+	})
+	return found
 }
 
-// AllButtons lists the buttons of every profile.
+// AllButtons lists the pressable buttons of every profile, folder contents included.
 func (c *Config) AllButtons() []Button {
 	var out []Button
-	for _, p := range c.Profiles {
-		out = append(out, p.Deck.Buttons...)
-	}
+	c.walk(func(b *Button) bool { out = append(out, *b); return true })
 	return out
+}
+
+// walk visits every pressable button (folders and what is inside them) until fn
+// returns false.
+func (c *Config) walk(fn func(*Button) bool) {
+	for p := range c.Profiles {
+		if !WalkButtons(c.Profiles[p].Deck.Buttons, fn) {
+			return
+		}
+	}
+}
+
+// WalkButtons visits buttons and the contents of folders among them until fn returns
+// false; it reports whether the walk went to the end.
+func WalkButtons(buttons []Button, fn func(*Button) bool) bool {
+	for i := range buttons {
+		if !fn(&buttons[i]) || !WalkButtons(buttons[i].Buttons, fn) {
+			return false
+		}
+	}
+	return true
 }
 
 // PushRecent moves id to the head of the history, dropping duplicates and overflow.
@@ -186,7 +209,7 @@ func (c *Config) PruneRecent() {
 func (c Config) clone() Config {
 	profiles := make([]Profile, len(c.Profiles))
 	for i, p := range c.Profiles {
-		p.Deck.Buttons = append([]Button(nil), p.Deck.Buttons...)
+		p.Deck.Buttons = cloneButtons(p.Deck.Buttons)
 		apps := make([]AppRule, len(p.Apps))
 		for j, a := range p.Apps {
 			a.Keys = append([]string(nil), a.Keys...)
@@ -203,6 +226,20 @@ func (c Config) clone() Config {
 	c.Devices = append([]Device(nil), c.Devices...)
 	c.Recent = append([]Recent(nil), c.Recent...)
 	return c
+}
+
+// cloneButtons copies nested lists too: edits through ButtonRef must never reach a
+// snapshot or the config Update rolls back to.
+func cloneButtons(in []Button) []Button {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]Button, len(in))
+	for i, b := range in {
+		b.Buttons = cloneButtons(b.Buttons)
+		out[i] = b
+	}
+	return out
 }
 
 type Store struct {

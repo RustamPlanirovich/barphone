@@ -32,11 +32,25 @@ func (s *Server) newNormalizer(c *store.Config) *deckNormalizer {
 }
 
 func (n *deckNormalizer) deck(in store.Deck) (store.Deck, error) {
-	if len(in.Buttons) > maxButtonsPerDeck {
-		return store.Deck{}, fmt.Errorf("не больше %d кнопок в профиле", maxButtonsPerDeck)
+	total := 0
+	store.WalkButtons(in.Buttons, func(*store.Button) bool { total++; return true })
+	if total > maxButtonsPerDeck {
+		return store.Deck{}, fmt.Errorf("не больше %d кнопок в профиле (вместе с папками)", maxButtonsPerDeck)
 	}
-	deck := store.Deck{Columns: min(max(in.Columns, store.MinColumns), store.MaxColumns), Buttons: []store.Button{}}
-	for _, b := range in.Buttons {
+	buttons, err := n.buttons(in.Buttons, false)
+	if err != nil {
+		return store.Deck{}, err
+	}
+	return store.Deck{Columns: min(max(in.Columns, store.MinColumns), store.MaxColumns), Buttons: buttons}, nil
+}
+
+// buttons normalizes one level of a deck: the top or, with inFolder, a folder's contents.
+func (n *deckNormalizer) buttons(in []store.Button, inFolder bool) ([]store.Button, error) {
+	out := []store.Button{}
+	for _, b := range in {
+		if b.Kind == store.KindFolder && inFolder {
+			return nil, errors.New("папку нельзя положить в другую папку")
+		}
 		if b.Kind != store.KindText { // text keeps its spaces and newlines
 			b.Target = strings.TrimSpace(b.Target)
 		}
@@ -46,9 +60,9 @@ func (n *deckNormalizer) deck(in store.Deck) (store.Deck, error) {
 		}
 		if err := launch.Validate(b); err != nil {
 			if strings.TrimSpace(b.Title) == "" {
-				return store.Deck{}, err
+				return nil, err
 			}
-			return store.Deck{}, fmt.Errorf("«%s»: %w", strings.TrimSpace(b.Title), err)
+			return nil, fmt.Errorf("«%s»: %w", strings.TrimSpace(b.Title), err)
 		}
 		if b.Kind == store.KindKeys {
 			c, _ := launch.ParseCombo(b.Target)
@@ -56,6 +70,16 @@ func (n *deckNormalizer) deck(in store.Deck) (store.Deck, error) {
 		}
 		if !b.Kind.Launches() {
 			b.OnRunning, b.Args = "", ""
+		}
+		if b.Kind == store.KindFolder {
+			b.Target = ""
+			children, err := n.buttons(b.Buttons, true)
+			if err != nil {
+				return nil, fmt.Errorf("папка «%s»: %w", strings.TrimSpace(b.Title), err)
+			}
+			b.Buttons = children
+		} else {
+			b.Buttons = nil
 		}
 		b.Title = strings.TrimSpace(b.Title)
 		if b.Title == "" {
@@ -76,9 +100,9 @@ func (n *deckNormalizer) deck(in store.Deck) (store.Deck, error) {
 		if existed && (old.Kind != b.Kind || old.Target != b.Target) && b.Icon == old.Icon {
 			b.Icon = ""
 		}
-		deck.Buttons = append(deck.Buttons, b)
+		out = append(out, b)
 	}
-	return deck, nil
+	return out, nil
 }
 
 // uiPutDeck edits the default profile's deck (kept for scripts and older UIs).
@@ -93,9 +117,7 @@ func (s *Server) uiPutDeck(w http.ResponseWriter, r *http.Request) {
 		n := s.newNormalizer(c)
 		for _, p := range c.Profiles {
 			if p.ID != store.DefaultProfileID {
-				for _, b := range p.Deck.Buttons {
-					n.seen[b.ID] = true
-				}
+				store.WalkButtons(p.Deck.Buttons, func(b *store.Button) bool { n.seen[b.ID] = true; return true })
 			}
 		}
 		deck, err := n.deck(in)

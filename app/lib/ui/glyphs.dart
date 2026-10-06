@@ -18,6 +18,7 @@ const _glyphs = <String, (IconData, Color)>{
   'display_off': (Icons.desktop_access_disabled_rounded, Color(0xFF4F7CFF)),
   'shutdown': (Icons.power_settings_new_rounded, Color(0xFFE5484D)),
   'restart': (Icons.restart_alt_rounded, Color(0xFFE5484D)),
+  'folder': (Icons.folder_rounded, Color(0xFFE0A63A)),
 };
 
 bool hasGlyph(String? name) => name != null && _glyphs.containsKey(name);

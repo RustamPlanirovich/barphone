@@ -201,6 +201,8 @@ func (s *Server) uiEvents(w http.ResponseWriter, r *http.Request) {
 
 func defaultTitle(b store.Button) string {
 	switch b.Kind {
+	case store.KindFolder:
+		return "Папка"
 	case store.KindKeys:
 		return b.Target
 	case store.KindSystem:
@@ -333,6 +335,10 @@ func (s *Server) uiLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 	if a, ok := launch.LookupSystemAction(b.Target); ok && b.Kind == store.KindSystem && a.Confirm {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "confirm_required", "message": "выключение и перезагрузка — только с телефона, с подтверждением"})
+		return
+	}
+	if !agentHandles(b.Kind) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported", "message": "это открывается на телефоне"})
 		return
 	}
 	if err := s.Launcher.Launch(b); err != nil {

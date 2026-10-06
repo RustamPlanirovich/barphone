@@ -100,3 +100,61 @@ func TestSnapshotIsDeep(t *testing.T) {
 		t.Fatal("default first")
 	}
 }
+
+func TestFolderContentsAreButtonsToo(t *testing.T) {
+	s, _ := Open(t.TempDir(), "host")
+	s.Update(func(c *Config) error {
+		c.Default().Deck.Buttons = []Button{
+			{ID: "top", Title: "Почта", Kind: KindURL, Target: "https://mail"},
+			{ID: "f", Title: "Игры", Kind: KindFolder, Buttons: []Button{{ID: "in", Title: "Steam", Kind: KindURL, Target: "steam://"}}},
+		}
+		return nil
+	})
+	before := s.Snapshot()
+	err := s.Update(func(c *Config) error {
+		b := c.ButtonRef("in")
+		if b == nil {
+			t.Fatal("a button inside a folder must be found")
+		}
+		b.Icon = "0123456789abcdef"
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := before.Profiles[0].Deck.Buttons[1].Buttons[0].Icon; got != "" {
+		t.Fatalf("an edit through ButtonRef reached an older snapshot: %q", got)
+	}
+	cfg := s.Snapshot()
+	if b, ok := cfg.Button("in"); !ok || b.Icon == "" {
+		t.Fatal("edit lost")
+	}
+	var ids []string
+	for _, b := range cfg.AllButtons() {
+		ids = append(ids, b.ID)
+	}
+	if strings.Join(ids, ",") != "top,f,in" {
+		t.Fatalf("AllButtons: %v", ids)
+	}
+	cfg.Recent = []Recent{{ID: "in"}, {ID: "gone"}}
+	cfg.PruneRecent()
+	if len(cfg.Recent) != 1 || cfg.Recent[0].ID != "in" {
+		t.Fatalf("history of a folder button: %+v", cfg.Recent)
+	}
+}
+
+func TestFailedUpdateRollsBackNestedEdits(t *testing.T) {
+	s, _ := Open(t.TempDir(), "host")
+	s.Update(func(c *Config) error {
+		c.Default().Deck.Buttons = []Button{{ID: "f", Kind: KindFolder, Buttons: []Button{{ID: "in", Title: "a"}}}}
+		return nil
+	})
+	s.Update(func(c *Config) error {
+		c.ButtonRef("in").Title = "changed"
+		return os.ErrInvalid
+	})
+	snap := s.Snapshot()
+	if b, _ := snap.Button("in"); b.Title != "a" {
+		t.Fatalf("rolled-back edit is visible: %q", b.Title)
+	}
+}

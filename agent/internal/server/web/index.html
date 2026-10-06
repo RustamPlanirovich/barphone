@@ -45,10 +45,15 @@
       <p class="small muted" id="profileDefaultHint" hidden>Показывается, когда впереди приложение, не привязанное ни к одному профилю.</p>
       <button class="btn danger ghost small" id="profileDelete">Удалить профиль</button>
     </div>
+    <div class="folder-bar" id="folderBar" hidden>
+      <button class="btn ghost small" id="folderBack">← Весь профиль</button>
+      <span class="folder-name">📁 <b id="folderName"></b></span>
+      <button class="btn ghost small" id="folderEdit">Настроить папку</button>
+    </div>
     <div class="phone">
       <div class="grid" id="grid"></div>
     </div>
-    <p class="hint">Перетаскивайте кнопки, чтобы поменять порядок. Клик — редактировать. Изменения сразу уходят на телефон.</p>
+    <p class="hint">Перетаскивайте кнопки, чтобы поменять порядок; на середину папки — чтобы положить в неё. Клик — редактировать, по папке — открыть. Изменения сразу уходят на телефон.</p>
   </section>
 
   <aside class="side">
@@ -76,7 +81,7 @@
 <!-- Добавление кнопки -->
 <dialog id="addDialog" class="modal wide">
   <div class="modal-head">
-    <h3>Добавить кнопку</h3>
+    <h3 id="addHeading">Добавить кнопку</h3>
     <button class="icon-btn" data-close aria-label="Закрыть">✕</button>
   </div>
   <div class="tabs" role="tablist">
@@ -86,6 +91,7 @@
     <button role="tab" data-tab="keys">Клавиши</button>
     <button role="tab" data-tab="text">Текст</button>
     <button role="tab" data-tab="system">Система</button>
+    <button role="tab" data-tab="more">Ещё</button>
   </div>
   <div class="tab-panel" data-panel="apps">
     <div class="search-row">
@@ -146,6 +152,15 @@
   <div class="tab-panel" data-panel="system" hidden>
     <ul class="app-list" id="systemList"></ul>
   </div>
+  <div class="tab-panel more" data-panel="more" hidden>
+    <form class="form more-item" id="folderForm">
+      <h4>📁 Папка</h4>
+      <p class="small muted">На телефоне открывается и показывает свои кнопки. Чтобы положить кнопку в папку, перетащите её на середину папки.</p>
+      <label>Название <input id="folderTitle" maxlength="64" placeholder="Игры" required></label>
+      <div class="actions"><button class="btn primary" type="submit">Создать папку</button></div>
+    </form>
+    <p class="small muted" id="folderInFolder" hidden>📁 Папку нельзя создать внутри другой папки.</p>
+  </div>
 </dialog>
 
 <!-- Привязка приложения к профилю -->
@@ -185,6 +200,7 @@
       <label id="editTargetRow"><span id="editTargetLabel">Что запускать</span> <input id="editTarget" spellcheck="false"></label>
       <label id="editTextRow" hidden>Текст <textarea id="editText" rows="4" maxlength="2000"></textarea></label>
       <label id="editArgsRow">Аргументы <input id="editArgs" spellcheck="false"></label>
+      <label id="editPlaceRow">Где лежит <select id="editPlace"></select></label>
       <label id="editRunningRow">Если уже открыто
         <select id="editRunning">
           <option value="">Переключиться на окно (окон несколько — выбрать на телефоне)</option>

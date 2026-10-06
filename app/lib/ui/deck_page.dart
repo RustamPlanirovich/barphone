@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../protocol/layout.dart';
 import '../protocol/link.dart';
+import '../protocol/models.dart';
 import '../state.dart';
 import 'profile_picker.dart';
 import 'theme.dart';
@@ -32,7 +33,8 @@ class DeckPage extends StatefulWidget {
 class _DeckPageState extends State<DeckPage> {
   final _pages = PageController();
   int _page = 0;
-  String? _shownKey; // machine/profile currently on screen
+  String? _shownKey; // machine/profile/folder currently on screen
+  String? _folderId; // open folder of the shown profile
 
   @override
   void dispose() {
@@ -40,7 +42,7 @@ class _DeckPageState extends State<DeckPage> {
     super.dispose();
   }
 
-  /// A different deck (another machine or profile) starts on its first page.
+  /// A different deck (another machine, profile or folder) starts on its first page.
   void _trackShown(String key) {
     if (_shownKey == key) return;
     final first = _shownKey == null;
@@ -62,7 +64,8 @@ class _DeckPageState extends State<DeckPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) => widget.app.setPinnedProfile(link.machine.id, null));
     }
     final shown = st?.shown(pinned);
-    if (shown != null) _trackShown('${link.machine.id}/${shown.id}');
+    if (shown != null && _folderId != null && _openFolder(shown) == null) _folderId = null; // gone from the PC
+    if (shown != null) _trackShown('${link.machine.id}/${shown.id}/${_folderId ?? ''}');
     final page = Column(
       children: [
         _Header(
@@ -77,7 +80,21 @@ class _DeckPageState extends State<DeckPage> {
         if (!widget.half) const DeckFooter(),
       ],
     );
-    return widget.half ? page : SafeArea(child: page);
+    // Back closes an open folder instead of leaving the deck.
+    return PopScope(
+      canPop: _folderId == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _folderId != null) setState(() => _folderId = null);
+      },
+      child: widget.half ? page : SafeArea(child: page),
+    );
+  }
+
+  DeckButton? _openFolder(DeckProfile deck) {
+    for (final b in deck.buttons) {
+      if (b.isFolder && b.id == _folderId) return b;
+    }
+    return null;
   }
 
   GridLayout _grid(double width, double height, int columns) =>
@@ -110,32 +127,35 @@ class _DeckPageState extends State<DeckPage> {
     // waits for the reconnect. Only a computer that stays away gets dimmed, with a banner on
     // top (the grid itself does not move).
     final live = link.quiet;
+    final folder = _openFolder(deck);
+    // Inside a folder the first tile leads back.
+    final items = <Object>[if (folder != null) _back, ...folder?.buttons ?? deck.buttons];
     return Stack(
       children: [
         Positioned.fill(
           // A short fade marks a profile switch (one PageView at a time: they share a controller).
           child: TweenAnimationBuilder<double>(
-            key: ValueKey(deck.id),
+            key: ValueKey('${deck.id}/${folder?.id}'),
             tween: Tween(begin: 0, end: 1),
             duration: const Duration(milliseconds: 180),
             builder: (context, v, child) => Opacity(opacity: v, child: child),
             child: LayoutBuilder(
               builder: (context, box) {
                 var g = _grid(box.maxWidth, box.maxHeight, deck.columns);
-                var pages = g.pages(deck.buttons.length);
+                var pages = g.pages(items.length);
                 if (pages > 1) {
                   // Leave room for the page dots.
                   g = _grid(box.maxWidth, box.maxHeight - _dotsHeight, deck.columns);
-                  pages = g.pages(deck.buttons.length);
+                  pages = g.pages(items.length);
                 }
                 if (_page >= pages) _page = pages - 1;
                 final view = PageView.builder(
-                  key: ValueKey('${link.machine.id}/${deck.id}'),
+                  key: ValueKey('${link.machine.id}/${deck.id}/${folder?.id}'),
                   controller: _pages,
                   itemCount: pages,
                   onPageChanged: (p) => setState(() => _page = p),
                   itemBuilder: (context, p) {
-                    final slice = deck.buttons.skip(p * g.perPage).take(g.perPage).toList();
+                    final slice = items.skip(p * g.perPage).take(g.perPage).toList();
                     return Center(
                       child: SizedBox(
                         width: g.columns * g.tile + (g.columns - 1) * g.gap,
@@ -143,7 +163,23 @@ class _DeckPageState extends State<DeckPage> {
                           spacing: g.gap,
                           runSpacing: g.gap,
                           children: [
-                            for (final b in slice) DeckTile(key: ValueKey(b.id), button: b, link: link, size: g.tile, enabled: live),
+                            for (final item in slice)
+                              if (item is DeckButton)
+                                DeckTile(
+                                  key: ValueKey(item.id),
+                                  button: item,
+                                  link: link,
+                                  size: g.tile,
+                                  enabled: live || item.isFolder,
+                                  onOpenFolder: (f) => setState(() => _folderId = f.id),
+                                )
+                              else
+                                BackTile(
+                                  key: const ValueKey('back'),
+                                  title: folder!.title,
+                                  size: g.tile,
+                                  onTap: () => setState(() => _folderId = null),
+                                ),
                           ],
                         ),
                       ),
@@ -171,6 +207,8 @@ class _DeckPageState extends State<DeckPage> {
       ],
     );
   }
+
+  static const _back = Object(); // the "back" tile of an open folder
 
   static const _dotsHeight = 18.0;
 

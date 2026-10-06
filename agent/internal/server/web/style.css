@@ -126,6 +126,22 @@ button, input { font: inherit; color: inherit; }
 .tile.drop-before { border-left-color: var(--accent); }
 .tile.drop-after { border-right-color: var(--accent); }
 .tile.big { width: 120px; cursor: default; }
+.tile.drop-into { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.04); }
+.tile.back { background: transparent; border: 2px dashed #3a404c; color: #8b919d; }
+.tile.back .glyph { opacity: 1; }
+.tile .count { position: absolute; top: 6px; right: 9px; font-size: 11px; color: var(--muted); font-weight: 600; }
+/* Drag offsets must be measured on the tile itself, not on its label or picture. */
+#grid .tile > * { pointer-events: none; }
+.folder-bar {
+  display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; padding: 8px 10px;
+  background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 12px;
+}
+.folder-bar .folder-name { flex: 1; }
+.tab-panel.more { display: grid; gap: 14px; }
+.tab-panel.more[hidden] { display: none; }
+.more-item { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-2); }
+.more-item h4 { margin: 0 0 4px; font-size: 14px; }
+.more-item p { margin: 0 0 6px; }
 .hint { color: var(--muted); font-size: 12.5px; text-align: center; margin: 16px 0 0; }
 
 /* lists */
