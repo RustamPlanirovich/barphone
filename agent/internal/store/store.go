@@ -26,11 +26,13 @@ const (
 	KindSystem ButtonKind = "system" // media/volume/power action, see launch.SystemActions
 
 	KindFolder ButtonKind = "folder" // opens its own Buttons on the phone; one level deep
+	KindMacro  ButtonKind = "macro"  // runs its Steps one after another
+	KindWait   ButtonKind = "wait"   // a macro step only: pause for Target milliseconds
 )
 
 func (k ButtonKind) Valid() bool {
 	switch k {
-	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder:
+	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait:
 		return true
 	}
 	return false
@@ -51,6 +53,9 @@ type Button struct {
 	OnRunning string `json:"onRunning,omitempty"`
 
 	Buttons []Button `json:"buttons,omitempty"` // a folder's buttons
+	// Steps of a macro: actions (no folders, macros or confirmed actions) and waits. They
+	// are not buttons of their own: no ID, never pressed or shown on the phone.
+	Steps []Button `json:"steps,omitempty"`
 }
 
 const OnRunningNew = "new"
@@ -237,6 +242,7 @@ func cloneButtons(in []Button) []Button {
 	out := make([]Button, len(in))
 	for i, b := range in {
 		b.Buttons = cloneButtons(b.Buttons)
+		b.Steps = cloneButtons(b.Steps)
 		out[i] = b
 	}
 	return out

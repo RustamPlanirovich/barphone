@@ -23,7 +23,7 @@ class MachineInfo {
 class DeckButton {
   final String id;
   final String title;
-  final String kind; // app | path | url | keys | text | system | folder
+  final String kind; // app | path | url | keys | text | system | folder | macro
   final String? icon;
   final String? glyph; // built-in picture: "keys", "text" or a system action id
   final String? control; // "slider": hold and drag (volume)

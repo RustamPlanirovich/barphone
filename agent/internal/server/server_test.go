@@ -48,7 +48,11 @@ func (f *fakeLauncher) Launch(b store.Button) error {
 	if b.Kind == store.KindSystem && b.Target == "volume" {
 		f.volume.Muted = !f.volume.Muted
 	}
-	f.launched = append(f.launched, b.ID)
+	id := b.ID
+	if id == "" { // a macro step
+		id = "step:" + b.Title
+	}
+	f.launched = append(f.launched, id)
 	return nil
 }
 func (f *fakeLauncher) Apps(context.Context) ([]launch.App, error) {

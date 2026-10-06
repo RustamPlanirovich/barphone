@@ -19,7 +19,7 @@ class AppWindow {
 
 class LaunchResult {
   final bool ok;
-  // not_found | launch_failed | window_gone | confirm_required | unsupported | offline | timeout
+  // not_found | launch_failed | window_gone | confirm_required | unsupported | busy | offline | timeout
   final String? error;
   final String? action; // launched | focused | choose | windows | done | volume | minimized
   final List<AppWindow> windows;

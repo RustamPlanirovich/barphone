@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -12,7 +13,19 @@ import (
 	"barphone/agent/internal/store"
 )
 
-const maxButtonsPerDeck = 200
+const (
+	maxButtonsPerDeck = 200
+	maxMacroSteps     = 50
+)
+
+// level is where a list of buttons lives.
+type level int
+
+const (
+	topLevel level = iota
+	inFolder
+	inMacro
+)
 
 // deckNormalizer validates decks coming from the UI. Button IDs stay unique across all
 // profiles (a phone presses buttons by ID, whatever profile they are in) and icons stay
@@ -37,19 +50,31 @@ func (n *deckNormalizer) deck(in store.Deck) (store.Deck, error) {
 	if total > maxButtonsPerDeck {
 		return store.Deck{}, fmt.Errorf("не больше %d кнопок в профиле (вместе с папками)", maxButtonsPerDeck)
 	}
-	buttons, err := n.buttons(in.Buttons, false)
+	buttons, err := n.buttons(in.Buttons, topLevel)
 	if err != nil {
 		return store.Deck{}, err
 	}
 	return store.Deck{Columns: min(max(in.Columns, store.MinColumns), store.MaxColumns), Buttons: buttons}, nil
 }
 
-// buttons normalizes one level of a deck: the top or, with inFolder, a folder's contents.
-func (n *deckNormalizer) buttons(in []store.Button, inFolder bool) ([]store.Button, error) {
+// buttons normalizes one list: the top of a deck, a folder's contents or a macro's steps.
+func (n *deckNormalizer) buttons(in []store.Button, where level) ([]store.Button, error) {
+	if where == inMacro && len(in) > maxMacroSteps {
+		return nil, fmt.Errorf("в макросе не больше %d шагов", maxMacroSteps)
+	}
 	out := []store.Button{}
 	for _, b := range in {
-		if b.Kind == store.KindFolder && inFolder {
+		switch {
+		case b.Kind == store.KindFolder && where == inFolder:
 			return nil, errors.New("папку нельзя положить в другую папку")
+		case b.Kind == store.KindWait && where != inMacro:
+			return nil, errors.New("пауза бывает только шагом макроса")
+		case where == inMacro && (b.Kind == store.KindFolder || b.Kind == store.KindMacro):
+			return nil, errors.New("в макрос нельзя добавить папку или другой макрос")
+		case where == inMacro && b.Kind == store.KindSystem:
+			if a, ok := launch.LookupSystemAction(b.Target); ok && a.Confirm {
+				return nil, fmt.Errorf("«%s» — только отдельной кнопкой, с подтверждением на телефоне", a.Title)
+			}
 		}
 		if b.Kind != store.KindText { // text keeps its spaces and newlines
 			b.Target = strings.TrimSpace(b.Target)
@@ -71,15 +96,26 @@ func (n *deckNormalizer) buttons(in []store.Button, inFolder bool) ([]store.Butt
 		if !b.Kind.Launches() {
 			b.OnRunning, b.Args = "", ""
 		}
-		if b.Kind == store.KindFolder {
+		kids, steps := b.Buttons, b.Steps
+		b.Buttons, b.Steps = nil, nil
+		switch b.Kind {
+		case store.KindFolder:
 			b.Target = ""
-			children, err := n.buttons(b.Buttons, true)
+			children, err := n.buttons(kids, inFolder)
 			if err != nil {
 				return nil, fmt.Errorf("папка «%s»: %w", strings.TrimSpace(b.Title), err)
 			}
 			b.Buttons = children
-		} else {
-			b.Buttons = nil
+		case store.KindMacro:
+			b.Target = ""
+			normalized, err := n.buttons(steps, inMacro)
+			if err != nil {
+				return nil, fmt.Errorf("макрос «%s»: %w", strings.TrimSpace(b.Title), err)
+			}
+			b.Steps = normalized
+		case store.KindWait:
+			ms, _ := strconv.Atoi(b.Target)
+			b.Target = strconv.Itoa(ms)
 		}
 		b.Title = strings.TrimSpace(b.Title)
 		if b.Title == "" {
@@ -87,6 +123,12 @@ func (n *deckNormalizer) buttons(in []store.Button, inFolder bool) ([]store.Butt
 		}
 		if utf8.RuneCountInString(b.Title) > 64 {
 			b.Title = string([]rune(b.Title)[:64])
+		}
+		if where == inMacro {
+			// A step is part of its macro, not a button: no ID to press, no icon.
+			b.ID, b.Icon = "", ""
+			out = append(out, b)
+			continue
 		}
 		old, existed := n.prev[b.ID]
 		if !existed || n.seen[b.ID] {

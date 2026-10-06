@@ -142,6 +142,22 @@ button, input { font: inherit; color: inherit; }
 .more-item { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-2); }
 .more-item h4 { margin: 0 0 4px; font-size: 14px; }
 .more-item p { margin: 0 0 6px; }
+.steps-box { display: grid; gap: 8px; font-size: 13px; min-width: 0; }
+.steps-box > * { min-width: 0; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 300px; overflow: auto; }
+.steps li {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; min-width: 0;
+  background: var(--card-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.steps li.empty { color: var(--muted); border-style: dashed; }
+.steps .n { width: 18px; color: var(--muted); font-weight: 600; text-align: right; }
+.steps .what { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.steps .what span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps img, .steps .ico { width: 20px; height: 20px; flex: none; text-align: center; }
+.steps input[type=number] { width: 76px; padding: 4px 6px; }
+.steps .icon-btn { flex: none; }
+.steps .icon-btn:disabled { opacity: .3; cursor: default; }
+.row-btns { display: flex; gap: 8px; }
 .hint { color: var(--muted); font-size: 12.5px; text-align: center; margin: 16px 0 0; }
 
 /* lists */
@@ -256,7 +272,7 @@ select {
 .actions.split > div { display: flex; gap: 8px; }
 
 .edit-body { display: flex; gap: 18px; padding: 8px 18px 18px; }
-.edit-body .form { flex: 1; }
+.edit-body .form { flex: 1; min-width: 0; }
 .edit-icon { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .icon-actions { display: flex; flex-direction: column; gap: 4px; width: 120px; }
 .icon-actions .btn { text-align: center; }

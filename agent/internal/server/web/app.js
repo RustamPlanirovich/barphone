@@ -54,9 +54,10 @@ const iconURL = (hash) => `/api/icon/${hash}.png`;
 const KIND_LABEL = {
   app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
   keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие', folder: 'Папка',
+  macro: 'Макрос', wait: 'Пауза',
 };
 const GLYPH = {
-  keys: '⌨️', text: '📝', folder: '📁',
+  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️',
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   lock: '🔒', sleep: '🌙', display_off: '🖥️', shutdown: '🔌', restart: '🔄',
@@ -72,7 +73,7 @@ function tileFace(b) {
       : h('div', { class: 'glyph' }, glyph || (b.kind === 'url' ? '↗' : (b.title || '?').trim().charAt(0).toUpperCase())),
     h('div', { class: 'label' }, b.title),
     b.kind === 'folder' ? h('span', { class: 'count' }, (b.buttons || []).length) : null,
-  ];
+  ].filter(Boolean);
 }
 
 // ---------- state ----------
@@ -171,7 +172,7 @@ function render() {
   renderDevices();
   renderRecent();
   renderNet();
-  if ($('#editDialog').open) renderEditPreview();
+  if ($('#editDialog').open) { renderEditPreview(); renderSteps(); }
   if ($('#pairDialog').open) renderPair();
   if ($('#bindDialog').open) renderBind();
   if ($('#addDialog').open) {
@@ -213,7 +214,9 @@ function renderDeck(force = false) {
     ...(back ? [back] : []),
     ...buttons.map((b, i) => h('div', {
       class: 'tile', draggable: 'true', 'data-id': b.id,
-      title: b.kind === 'folder' ? `${b.title}\nПапка: кнопок ${(b.buttons || []).length}. Клик — открыть.` : `${b.title}\n${KIND_LABEL[b.kind]}: ${b.target}`,
+      title: b.kind === 'folder' ? `${b.title}\nПапка: кнопок ${(b.buttons || []).length}. Клик — открыть.`
+        : b.kind === 'macro' ? `${b.title}\nМакрос: шагов ${(b.steps || []).length}`
+        : `${b.title}\n${KIND_LABEL[b.kind]}: ${b.target}`,
       ondragstart: (e) => { dragIndex = i; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; },
       ondragend: () => { dragIndex = null; renderDeck(true); },
       ondragover: (e) => {
@@ -518,10 +521,17 @@ for (const dlg of document.querySelectorAll('dialog')) {
 let apps = null;
 let appsLoading = false;
 
-function openAdd() {
+// The add dialog also picks macro steps: stepFor is then the macro's ID.
+let stepFor = null;
+
+function openAdd(macroId = null) {
   const dlg = $('#addDialog');
   const folder = curFolder();
-  $('#addHeading').textContent = folder ? `Добавить в папку «${folder.title}»` : 'Добавить кнопку';
+  stepFor = macroId;
+  const macro = macroId && findButton(macroId);
+  $('#addHeading').textContent = macro ? `Шаг макроса «${macro.title}»`
+    : folder ? `Добавить в папку «${folder.title}»` : 'Добавить кнопку';
+  $('#addDialog [data-tab=more]').hidden = Boolean(macro);
   $('#folderForm').hidden = Boolean(folder);
   $('#folderInFolder').hidden = !folder;
   selectTab('apps');
@@ -538,6 +548,7 @@ function selectTab(name) {
   stopRecording();
 }
 for (const t of document.querySelectorAll('#addDialog [role=tab]')) t.onclick = () => selectTab(t.dataset.tab);
+$('#addDialog').addEventListener('close', () => { stepFor = null; });
 
 async function loadApps(refreshList) {
   if (appsLoading || (apps && !refreshList)) return renderApps();
@@ -554,7 +565,7 @@ function renderApps() {
   const ul = $('#appList');
   if (appsLoading && !apps) { ul.replaceChildren(h('li', { class: 'msg' }, 'Читаю список приложений…')); return; }
   const q = $('#appSearch').value.trim().toLowerCase();
-  const added = new Set(curList().filter((b) => b.kind === 'app').map((b) => b.target));
+  const added = new Set(stepFor ? [] : curList().filter((b) => b.kind === 'app').map((b) => b.target));
   const list = (apps || []).filter((a) => !q || a.name.toLowerCase().includes(q));
   if (!list.length) { ul.replaceChildren(h('li', { class: 'msg' }, q ? 'Ничего не нашлось. Попробуйте вкладку «Файл или программа».' : 'Приложения не найдены.')); return; }
   const scroll = ul.scrollTop;
@@ -571,6 +582,7 @@ function renderApps() {
 
 // Saves right away and only reports success once the agent has accepted the button.
 async function addButton(b) {
+  if (stepFor) return addStep(b);
   const folder = curFolder();
   const nb = { id: '', title: b.title || '', kind: b.kind, target: b.target || '', args: b.args || '' };
   if (b.kind === 'folder') nb.buttons = [];
@@ -578,8 +590,90 @@ async function addButton(b) {
   localVersion++;
   render();
   clearTimeout(saveTimer);
-  if (await saveDeck()) toast(`Добавлено${folder ? ` в «${folder.title}»` : ''}: ${b.title || nb.target.trim()}`);
+  const ok = await saveDeck();
+  if (ok) toast(`Добавлено${folder ? ` в «${folder.title}»` : ''}: ${b.title || nb.target.trim()}`);
+  return ok;
 }
+
+// --- macros ---
+async function addStep(b) {
+  const macro = findButton(stepFor);
+  $('#addDialog').close();
+  if (!macro) return false;
+  (macro.steps = macro.steps || []).push({ title: b.title || '', kind: b.kind, target: b.target || '', args: b.args || '' });
+  localVersion++;
+  render();
+  clearTimeout(saveTimer);
+  return saveDeck();
+}
+
+function editSteps(mutate, delay = 0) {
+  editDeck(() => {
+    const m = editing();
+    if (m) mutate((m.steps = m.steps || []));
+  }, delay);
+}
+
+$('#stepAdd').onclick = () => openAdd(editingId);
+$('#stepWait').onclick = () => editSteps((steps) => steps.push({ kind: 'wait', target: '1000', title: '' }));
+
+const stepTyping = (b) => (b.steps || []).some((st) => st.kind === 'keys' || st.kind === 'text');
+
+let renderedSteps = '';
+function renderSteps(force = false) {
+  const b = editing();
+  const row = $('#editStepsRow');
+  row.hidden = !b || b.kind !== 'macro';
+  if (row.hidden) return;
+  // Typing into the browser tab would be the result of «Проверить» for keys and text steps.
+  $('#editTest').hidden = stepTyping(b);
+  const steps = b.steps || [];
+  const key = b.id + JSON.stringify(steps);
+  if (!force && key === renderedSteps) return; // keep focus in a pause being edited
+  renderedSteps = key;
+  if (!steps.length) {
+    $('#editSteps').replaceChildren(h('li', { class: 'empty' }, 'Пока ни одного шага. Добавьте действия и паузы между ними.'));
+    return;
+  }
+  $('#editSteps').replaceChildren(...steps.map((st, i) => h('li', {},
+    h('span', { class: 'n' }, i + 1),
+    st.kind === 'wait'
+      ? h('span', { class: 'what' }, h('span', { class: 'ico' }, '⏱️'), 'Пауза',
+          h('input', {
+            type: 'number', min: '0.05', max: '60', step: '0.05', value: String(Number(st.target) / 1000), 'aria-label': 'Секунд',
+            onchange: (e) => {
+              const ms = Math.round(Math.min(60, Math.max(0.05, Number(e.target.value) || 1)) * 1000);
+              editSteps((list) => { list[i].target = String(ms); list[i].title = ''; });
+            },
+          }), 'с')
+      : h('span', { class: 'what', title: `${KIND_LABEL[st.kind]}: ${st.target}` },
+          ['app', 'path'].includes(st.kind)
+            ? h('img', {
+                src: `/api/appicon?kind=${encodeURIComponent(st.kind)}&target=${encodeURIComponent(st.target)}`, alt: '',
+                onerror: (e) => e.currentTarget.replaceWith(h('span', { class: 'ico' }, '•')),
+              })
+            : h('span', { class: 'ico' }, glyphOf(st) || (st.kind === 'url' ? '↗' : '•')),
+          h('span', {}, st.title || st.target)),
+    h('button', { type: 'button', class: 'icon-btn', title: 'Выше', 'aria-label': 'Выше', disabled: i === 0,
+      onclick: () => editSteps((list) => list.splice(i - 1, 0, ...list.splice(i, 1))) }, '↑'),
+    h('button', { type: 'button', class: 'icon-btn', title: 'Ниже', 'aria-label': 'Ниже', disabled: i === steps.length - 1,
+      onclick: () => editSteps((list) => list.splice(i + 1, 0, ...list.splice(i, 1))) }, '↓'),
+    h('button', { type: 'button', class: 'icon-btn', title: 'Убрать шаг', 'aria-label': 'Убрать шаг',
+      onclick: () => editSteps((list) => list.splice(i, 1)) }, '✕'),
+  )));
+}
+
+$('#macroForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = $('#macroTitle').value.trim();
+  e.target.reset();
+  $('#addDialog').close();
+  if (await addButton({ kind: 'macro', title })) {
+    const list = curList();
+    const m = list[list.length - 1];
+    if (m && m.kind === 'macro') openEdit(m.id);
+  }
+});
 
 $('#folderForm').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -671,8 +765,10 @@ $('#textForm').addEventListener('submit', (e) => {
 
 // --- system actions ---
 function renderSystemList() {
-  const added = new Set(curList().filter((b) => b.kind === 'system').map((b) => b.target));
-  $('#systemList').replaceChildren(...(state.systemActions || []).map((a) => h('li', {
+  const added = new Set(stepFor ? [] : curList().filter((b) => b.kind === 'system').map((b) => b.target));
+  // Shutdown and restart need the phone's confirmation: never a macro step.
+  const actions = (state.systemActions || []).filter((a) => !(stepFor && a.confirm));
+  $('#systemList').replaceChildren(...actions.map((a) => h('li', {
     onclick: () => addButton({ kind: 'system', target: a.id, title: a.title }),
   },
     h('span', { class: 'glyph-ico' }, GLYPH[a.id] || '⚙️'),
@@ -703,7 +799,7 @@ function openEdit(id) {
   $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие' }[b.kind] || 'Что запускать';
   $('#editTarget').value = action ? action.title : b.target;
   $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
-  $('#editTargetRow').hidden = b.kind === 'text' || b.kind === 'folder';
+  $('#editTargetRow').hidden = ['text', 'folder', 'macro'].includes(b.kind);
   $('#editTextRow').hidden = b.kind !== 'text';
   $('#editText').value = b.kind === 'text' ? b.target : '';
   $('#editArgs').value = b.args || '';
@@ -718,6 +814,7 @@ function openEdit(id) {
     keys: ' · уходит в активное окно на компьютере',
     text: ' · вводится в активное окно, перенос строки — Enter',
     folder: ' · на телефоне открывается тапом; кнопки внутри — в самой папке на деке',
+    macro: ' · уже открытая программа выводится вперёд; пока макрос идёт, второй не запустится',
   };
   $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
     (action && action.slider ? ' · на телефоне: тап — без звука, удержание и ведение пальцем — громкость' : '') +
@@ -726,6 +823,7 @@ function openEdit(id) {
   delete del.dataset.armed;
   del.textContent = b.kind === 'folder' ? 'Удалить папку' : 'Удалить';
   renderEditPreview();
+  renderSteps(true);
   $('#editDialog').showModal();
 }
 
@@ -791,7 +889,7 @@ $('#editDelete').onclick = (e) => {
 
 $('#editTest').onclick = async () => {
   if (localVersion !== savedVersion) { clearTimeout(saveTimer); await saveDeck(); }
-  try { await req('POST', `/api/buttons/${encodeURIComponent(editingId)}/launch`); toast('Запущено'); } catch (e) { toast('Не запустилось: ' + e.message, true); }
+  try { await req('POST', `/api/buttons/${encodeURIComponent(editingId)}/launch`); toast(editing()?.kind === 'macro' ? 'Макрос запущен' : 'Запущено'); } catch (e) { toast('Не запустилось: ' + e.message, true); }
 };
 
 $('#iconFile').addEventListener('change', async (e) => {

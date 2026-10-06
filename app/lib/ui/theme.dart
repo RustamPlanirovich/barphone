@@ -72,6 +72,7 @@ String launchError(String? code) => switch (code) {
   'window_gone' => 'Это окно уже закрыто',
   'confirm_required' => 'Нужно подтверждение — обновите приложение',
   'unsupported' => 'Этот компьютер так не умеет',
+  'busy' => 'Ещё выполняется другой макрос',
   _ => 'Не получилось: $code',
 };
 

@@ -9,6 +9,7 @@ import (
 	"image"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,6 +91,12 @@ func ShortTitles(ws []Window) {
 }
 
 // Validate checks a button before it is saved into the deck.
+// Pause limits for macro steps, in milliseconds.
+const (
+	MinWait = 50
+	MaxWait = 60_000
+)
+
 func Validate(b store.Button) error {
 	if !b.Kind.Valid() {
 		return errors.New("неизвестный тип кнопки")
@@ -108,8 +115,14 @@ func Validate(b store.Button) error {
 			return fmt.Errorf("неизвестное действие %q", b.Target)
 		}
 		return nil
-	case store.KindFolder:
-		return nil // its buttons are checked one by one
+	case store.KindFolder, store.KindMacro:
+		return nil // their buttons and steps are checked one by one
+	case store.KindWait:
+		ms, err := strconv.Atoi(strings.TrimSpace(b.Target))
+		if err != nil || ms < MinWait || ms > MaxWait {
+			return fmt.Errorf("пауза — от %d мс до %d с", MinWait, MaxWait/1000)
+		}
+		return nil
 	}
 	t := strings.TrimSpace(b.Target)
 	if t == "" || len(t) > 2048 {

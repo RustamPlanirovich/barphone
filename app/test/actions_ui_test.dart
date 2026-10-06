@@ -18,6 +18,7 @@ class FakeLink extends MachineLink {
   double level = .40;
   final sets = <double>[];
   final launches = <String>[];
+  String? answerError; // e.g. "busy": the next launches fail with it
 
   @override
   Future<LaunchResult> volume(String buttonId, [double? value]) async {
@@ -31,7 +32,8 @@ class FakeLink extends MachineLink {
   @override
   Future<LaunchResult> launch(String buttonId, {bool newInstance = false, bool confirmed = false}) async {
     launches.add('$buttonId${confirmed ? '+confirmed' : ''}');
-    return const LaunchResult.ok(action: 'done');
+    final err = answerError;
+    return err == null ? const LaunchResult.ok(action: 'done') : LaunchResult.fail(err);
   }
 }
 
@@ -53,6 +55,19 @@ void main() {
     expect(find.byIcon(Icons.keyboard_rounded), findsOneWidget);
     await pumpTile(tester, const DeckButton(id: 'p', title: 'Пауза', kind: 'system', glyph: 'media_play_pause'), link);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+  });
+
+  testWidgets('a macro is one press; a second one while it runs says so', (tester) async {
+    final link = FakeLink();
+    await pumpTile(tester, const DeckButton(id: 'm1', title: 'Начать работу', kind: 'macro', glyph: 'macro'), link);
+    expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
+    await tester.tap(find.text('Начать работу'));
+    await tester.pumpAndSettle();
+    expect(link.launches, ['m1']);
+    link.answerError = 'busy';
+    await tester.tap(find.text('Начать работу'));
+    await tester.pump();
+    expect(find.text('Начать работу: Ещё выполняется другой макрос'), findsOneWidget);
   });
 
   testWidgets('shutdown asks first; cancel sends nothing, confirm sends "confirmed"', (tester) async {

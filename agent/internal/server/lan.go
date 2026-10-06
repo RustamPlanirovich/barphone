@@ -251,6 +251,18 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 		res.Error = "unsupported" // an app too old to open folders itself
 		return res
 	}
+	if b.Kind == store.KindMacro {
+		switch {
+		case msg.Type != "launch":
+			res.Error = "bad_request"
+		case !s.startMacro(b):
+			res.Error = "busy"
+		default:
+			s.pushRecent(b.ID)
+			res.OK, res.Action = true, actionDone // the steps go on in the background
+		}
+		return res
+	}
 	listWindows := func() []launch.Window {
 		ws, err := s.Launcher.Windows(b)
 		if err != nil {
@@ -357,11 +369,15 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 			res.Action = actionLaunched
 		}
 	}
-	if err := s.Store.Update(func(c *store.Config) error { c.PushRecent(b.ID, time.Now()); return nil }); err != nil {
-		s.Log.Printf("press: history: %v", err)
-	}
+	s.pushRecent(b.ID)
 	res.OK = true
 	return res
+}
+
+func (s *Server) pushRecent(id string) {
+	if err := s.Store.Update(func(c *store.Config) error { c.PushRecent(id, time.Now()); return nil }); err != nil {
+		s.Log.Printf("press: history: %v", err)
+	}
 }
 
 // agentHandles reports whether pressing a kind is the agent's business: a folder opens

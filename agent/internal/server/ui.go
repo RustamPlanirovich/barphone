@@ -203,6 +203,11 @@ func defaultTitle(b store.Button) string {
 	switch b.Kind {
 	case store.KindFolder:
 		return "Папка"
+	case store.KindMacro:
+		return "Макрос"
+	case store.KindWait:
+		ms, _ := strconv.Atoi(b.Target)
+		return "Пауза " + strings.Replace(strconv.FormatFloat(float64(ms)/1000, 'f', -1, 64), ".", ",", 1) + " с"
 	case store.KindKeys:
 		return b.Target
 	case store.KindSystem:
@@ -339,6 +344,14 @@ func (s *Server) uiLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !agentHandles(b.Kind) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported", "message": "это открывается на телефоне"})
+		return
+	}
+	if b.Kind == store.KindMacro {
+		if !s.startMacro(b) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "busy", "message": "ещё выполняется другой макрос"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
 	if err := s.Launcher.Launch(b); err != nil {

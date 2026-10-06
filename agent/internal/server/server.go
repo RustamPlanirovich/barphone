@@ -47,6 +47,9 @@ type Server struct {
 
 	hub    hub
 	fwBusy atomic.Bool
+	// macroBusy: a macro is running; runCtx stops it when the agent shuts down.
+	macroBusy atomic.Bool
+	runCtx    atomic.Pointer[context.Context]
 	// forceBroadcast makes Run push state even if it looks unchanged (a phone connected
 	// and may have seen an intermediate state).
 	forceBroadcast atomic.Bool
@@ -76,6 +79,7 @@ func OSName() string {
 // Run broadcasts state to phones on every change and fills in missing icons. Blocks until ctx is done.
 func (s *Server) Run(ctx context.Context) {
 	s.init()
+	s.runCtx.Store(&ctx)
 	changes, unsubscribe := s.Store.Subscribe()
 	defer unsubscribe()
 	workerDone := make(chan struct{})
@@ -197,6 +201,8 @@ func wireButtons(buttons []store.Button) []wireButton {
 		case store.KindFolder:
 			wb.Glyph = string(b.Kind)
 			wb.Buttons = wireButtons(b.Buttons)
+		case store.KindMacro:
+			wb.Glyph = string(b.Kind) // never the steps: they hold paths and texts
 		case store.KindSystem:
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
@@ -344,7 +350,7 @@ func (s *Server) iconWorker(ctx context.Context) {
 
 // iconFor extracts (once per target) and stores a native icon; "" if there is none.
 func (s *Server) iconFor(kind store.ButtonKind, target string) string {
-	if kind == store.KindFolder {
+	if kind == store.KindFolder || kind == store.KindMacro {
 		return "" // a built-in glyph unless the user sets an icon
 	}
 	key := iconKey(kind, target)
