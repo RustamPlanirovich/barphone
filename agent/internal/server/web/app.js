@@ -54,15 +54,15 @@ const iconURL = (hash) => `/api/icon/${hash}.png`;
 const KIND_LABEL = {
   app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
   keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие', folder: 'Папка',
-  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер',
+  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер', stat: 'Живая плитка',
 };
 const GLYPH = {
-  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️',
+  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️', cpu: '📈', ram: '🧠',
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   lock: '🔒', sleep: '🌙', display_off: '🖥️', shutdown: '🔌', restart: '🔄',
 };
-const glyphOf = (b) => (b.kind === 'system' ? GLYPH[b.target] : GLYPH[b.kind]);
+const glyphOf = (b) => (b.kind === 'system' || b.kind === 'stat' ? GLYPH[b.target] : GLYPH[b.kind]);
 const systemAction = (id) => (state.systemActions || []).find((a) => a.id === id);
 
 function tileFace(b) {
@@ -663,6 +663,13 @@ function renderSteps(force = false) {
   )));
 }
 
+for (const [id, target, title] of [['#statCpu', 'cpu', 'Процессор'], ['#statRam', 'ram', 'Память']]) {
+  $(id).onclick = () => {
+    $('#addDialog').close();
+    addButton({ kind: 'stat', target, title });
+  };
+}
+
 $('#timerForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const seconds = Math.round(Number($('#timerMinutes').value) * 60);
@@ -810,7 +817,7 @@ function openEdit(id) {
   $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие', timer: 'Длительность, минут' }[b.kind] || 'Что запускать';
   $('#editTarget').value = action ? action.title : b.kind === 'timer' ? timerMinutes(b) : b.target;
   $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
-  $('#editTargetRow').hidden = ['text', 'folder', 'macro'].includes(b.kind);
+  $('#editTargetRow').hidden = ['text', 'folder', 'macro', 'stat'].includes(b.kind);
   $('#editTextRow').hidden = b.kind !== 'text';
   $('#editText').value = b.kind === 'text' ? b.target : '';
   $('#editArgs').value = b.args || '';
@@ -827,6 +834,7 @@ function openEdit(id) {
     folder: ' · на телефоне открывается тапом; кнопки внутри — в самой папке на деке',
     macro: ' · уже открытая программа выводится вперёд; пока макрос идёт, второй не запустится',
     timer: ' · отсчёт идёт на телефоне: тап — старт, ещё тап — остановить',
+    stat: ' · на телефоне показывает загрузку и обновляется каждые пару секунд; тап — диспетчер задач',
   };
   $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
     (action && action.slider ? ' · на телефоне: тап — без звука, удержание и ведение пальцем — громкость' : '') +

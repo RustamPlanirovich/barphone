@@ -24,6 +24,7 @@ import (
 	"barphone/agent/internal/netinfo"
 	"barphone/agent/internal/pairing"
 	"barphone/agent/internal/store"
+	"barphone/agent/internal/sysstat"
 )
 
 type fakeLauncher struct {
@@ -107,6 +108,13 @@ func (f *fakeLauncher) Minimize(b store.Button, id string) error {
 }
 func (f *fakeLauncher) OpenURL(string) error { return nil }
 
+type fakeStats struct{}
+
+func (fakeStats) Read() (sysstat.Sample, error) {
+	cpu, ram := 0.25, 0.5
+	return sysstat.Sample{CPU: &cpu, RAM: &ram, RAMUsed: 8 << 30, RAMTotal: 16 << 30}, nil
+}
+
 type env struct {
 	t    *testing.T
 	srv  *Server
@@ -141,8 +149,9 @@ func newEnv(t *testing.T) *env {
 		Store: st, Icons: ic, Launcher: fake, Apps: &launch.AppCache{L: fake, TTL: time.Minute},
 		Pairing: &pairing.Sessions{}, Log: log.New(io.Discard, "", 0),
 		LANPort: 47800, UIPort: uiLn.Addr().(*net.TCPAddr).Port,
-		// Tests never go to the internet for link icons.
+		// Tests never go to the internet for link icons, nor measure this computer.
 		SiteIcon: func(context.Context, string) (image.Image, error) { return nil, errors.New("offline in tests") },
+		Stats:    fakeStats{},
 		Addrs: func() []netinfo.Addr {
 			return []netinfo.Addr{{IP: "192.168.1.10", Iface: "Wi-Fi", MAC: "aa:bb:cc:dd:ee:ff"}}
 		},

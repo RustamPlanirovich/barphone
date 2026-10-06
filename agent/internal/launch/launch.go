@@ -126,6 +126,11 @@ func Validate(b store.Button) error {
 			return fmt.Errorf("пауза — от %d мс до %d с", MinWait, MaxWait/1000)
 		}
 		return nil
+	case store.KindStat:
+		if b.Target != "cpu" && b.Target != "ram" {
+			return errors.New("показатель — cpu или ram")
+		}
+		return nil
 	case store.KindTimer:
 		if sec, err := strconv.Atoi(strings.TrimSpace(b.Target)); err != nil || sec < 1 || sec > MaxTimer {
 			return errors.New("таймер — от 1 секунды до 24 часов")

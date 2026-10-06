@@ -251,6 +251,17 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 		res.Error = "unsupported" // an app too old to open folders or run timers itself
 		return res
 	}
+	if b.Kind == store.KindStat { // a live tile: a tap opens the task manager
+		if msg.Type != "launch" {
+			res.Error = "bad_request"
+		} else if err := s.Launcher.Launch(monitorApp()); err != nil {
+			s.Log.Printf("task manager: %v", err)
+			res.Error = "launch_failed"
+		} else {
+			res.OK, res.Action = true, actionDone
+		}
+		return res
+	}
 	if b.Kind == store.KindMacro {
 		switch {
 		case msg.Type != "launch":

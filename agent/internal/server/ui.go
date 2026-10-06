@@ -208,6 +208,11 @@ func defaultTitle(b store.Button) string {
 	case store.KindWait:
 		ms, _ := strconv.Atoi(b.Target)
 		return "Пауза " + strings.Replace(strconv.FormatFloat(float64(ms)/1000, 'f', -1, 64), ".", ",", 1) + " с"
+	case store.KindStat:
+		if b.Target == "ram" {
+			return "Память"
+		}
+		return "Процессор"
 	case store.KindTimer:
 		sec, _ := strconv.Atoi(b.Target)
 		if sec%60 == 0 {
@@ -351,6 +356,9 @@ func (s *Server) uiLaunch(w http.ResponseWriter, r *http.Request) {
 	if !agentHandles(b.Kind) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported", "message": "это открывается на телефоне"})
 		return
+	}
+	if b.Kind == store.KindStat {
+		b = monitorApp()
 	}
 	if b.Kind == store.KindMacro {
 		if !s.startMacro(b) {

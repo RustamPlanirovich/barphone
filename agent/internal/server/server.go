@@ -23,6 +23,7 @@ import (
 	"barphone/agent/internal/netinfo"
 	"barphone/agent/internal/pairing"
 	"barphone/agent/internal/store"
+	"barphone/agent/internal/sysstat"
 )
 
 const ProtocolVersion = 1
@@ -45,6 +46,10 @@ type Server struct {
 	Firewall *firewall.Checker
 	// SiteIcon fetches a website's icon for link buttons; nil means favicon.Fetch.
 	SiteIcon func(ctx context.Context, url string) (image.Image, error)
+	// Stats measures CPU and memory for live tiles; nil means this computer (sysstat).
+	Stats interface {
+		Read() (sysstat.Sample, error)
+	}
 
 	hub    hub
 	fwBusy atomic.Bool
@@ -88,6 +93,7 @@ func (s *Server) Run(ctx context.Context) {
 		defer close(workerDone)
 		s.iconWorker(ctx)
 	}()
+	go s.statsLoop(ctx)
 	s.wakeIcons()
 	var last []byte
 	for {
@@ -111,6 +117,9 @@ func (s *Server) Run(ctx context.Context) {
 func (s *Server) init() {
 	s.iconMu.Lock()
 	defer s.iconMu.Unlock()
+	if s.Stats == nil {
+		s.Stats = sysstat.New()
+	}
 	if s.iconTried == nil {
 		s.iconTried = map[string]bool{}
 		s.appIcons = map[string]string{}
@@ -151,6 +160,8 @@ type wireButton struct {
 	Buttons []wireButton `json:"buttons,omitempty"`
 	// Seconds: a timer's duration; the phone counts down by itself.
 	Seconds int `json:"seconds,omitempty"`
+	// Stat: what a live tile shows ("cpu", "ram"), from "stats" messages.
+	Stat string `json:"stat,omitempty"`
 }
 
 type stateMsg struct {
@@ -212,6 +223,8 @@ func wireButtons(buttons []store.Button) []wireButton {
 		case store.KindTimer:
 			wb.Glyph = string(b.Kind)
 			wb.Seconds, _ = strconv.Atoi(b.Target)
+		case store.KindStat:
+			wb.Glyph, wb.Stat = b.Target, b.Target
 		case store.KindSystem:
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
@@ -359,7 +372,7 @@ func (s *Server) iconWorker(ctx context.Context) {
 
 // iconFor extracts (once per target) and stores a native icon; "" if there is none.
 func (s *Server) iconFor(kind store.ButtonKind, target string) string {
-	if kind == store.KindFolder || kind == store.KindMacro || kind == store.KindTimer {
+	if kind == store.KindFolder || kind == store.KindMacro || kind == store.KindTimer || kind == store.KindStat {
 		return "" // a built-in glyph unless the user sets an icon
 	}
 	key := iconKey(kind, target)

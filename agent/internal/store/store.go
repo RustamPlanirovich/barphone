@@ -29,11 +29,12 @@ const (
 	KindMacro  ButtonKind = "macro"  // runs its Steps one after another
 	KindWait   ButtonKind = "wait"   // a macro step only: pause for Target milliseconds
 	KindTimer  ButtonKind = "timer"  // counts down Target seconds on the phone
+	KindStat   ButtonKind = "stat"   // live tile: Target "cpu" or "ram"
 )
 
 func (k ButtonKind) Valid() bool {
 	switch k {
-	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer:
+	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer, KindStat:
 		return true
 	}
 	return false

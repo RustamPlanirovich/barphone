@@ -69,8 +69,8 @@ func (n *deckNormalizer) buttons(in []store.Button, where level) ([]store.Button
 			return nil, errors.New("папку нельзя положить в другую папку")
 		case b.Kind == store.KindWait && where != inMacro:
 			return nil, errors.New("пауза бывает только шагом макроса")
-		case where == inMacro && (b.Kind == store.KindFolder || b.Kind == store.KindMacro || b.Kind == store.KindTimer):
-			return nil, errors.New("в макрос нельзя добавить папку, таймер или другой макрос")
+		case where == inMacro && (b.Kind == store.KindFolder || b.Kind == store.KindMacro || b.Kind == store.KindTimer || b.Kind == store.KindStat):
+			return nil, errors.New("в макрос нельзя добавить папку, таймер, показатель или другой макрос")
 		case where == inMacro && b.Kind == store.KindSystem:
 			if a, ok := launch.LookupSystemAction(b.Target); ok && a.Confirm {
 				return nil, fmt.Errorf("«%s» — только отдельной кнопкой, с подтверждением на телефоне", a.Title)

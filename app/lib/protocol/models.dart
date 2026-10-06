@@ -25,13 +25,14 @@ class MachineInfo {
 class DeckButton {
   final String id;
   final String title;
-  final String kind; // app | path | url | keys | text | system | folder | macro | timer
+  final String kind; // app | path | url | keys | text | system | folder | macro | timer | stat
   final String? icon;
   final String? glyph; // built-in picture: "keys", "text" or a system action id
   final String? control; // "slider": hold and drag (volume)
   final bool confirm; // ask before pressing (shutdown, restart)
   final List<DeckButton> buttons; // a folder's buttons
   final int? seconds; // a timer's duration
+  final String? stat; // a live tile: "cpu" or "ram"
 
   const DeckButton({
     required this.id,
@@ -43,6 +44,7 @@ class DeckButton {
     this.confirm = false,
     this.buttons = const [],
     this.seconds,
+    this.stat,
   });
 
   /// Starts a program on the PC, so it can have open windows to choose from.
@@ -55,6 +57,9 @@ class DeckButton {
   /// Counts down [seconds] on the phone; the agent is not asked.
   bool get isTimer => kind == 'timer';
 
+  /// Shows a number from the PC's "stats" messages.
+  bool get isStat => kind == 'stat' && stat != null;
+
   factory DeckButton.fromJson(Map<String, dynamic> j) => DeckButton(
     id: j['id'] as String,
     title: (j['title'] as String?) ?? '',
@@ -65,6 +70,7 @@ class DeckButton {
     confirm: j['confirm'] == true,
     buttons: ((j['buttons'] as List?) ?? const []).map((b) => DeckButton.fromJson((b as Map).cast<String, dynamic>())).toList(),
     seconds: (j['seconds'] as num?)?.toInt(),
+    stat: j['stat'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -77,6 +83,29 @@ class DeckButton {
     if (confirm) 'confirm': true,
     if (buttons.isNotEmpty) 'buttons': [for (final b in buttons) b.toJson()],
     if (seconds != null) 'seconds': seconds,
+    if (stat != null) 'stat': stat,
+  };
+}
+
+/// CPU load and memory of the PC, for live tiles; null fields were not measured.
+class SysStats {
+  final double? cpu; // 0..1
+  final double? ram; // 0..1
+  final int? ramUsed, ramTotal; // bytes
+
+  const SysStats({this.cpu, this.ram, this.ramUsed, this.ramTotal});
+
+  factory SysStats.fromJson(Map<String, dynamic> j) => SysStats(
+    cpu: (j['cpu'] as num?)?.toDouble(),
+    ram: (j['ram'] as num?)?.toDouble(),
+    ramUsed: (j['ramUsed'] as num?)?.toInt(),
+    ramTotal: (j['ramTotal'] as num?)?.toInt(),
+  );
+
+  double? of(String stat) => switch (stat) {
+    'cpu' => cpu,
+    'ram' => ram,
+    _ => null,
   };
 }
 

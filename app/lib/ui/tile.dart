@@ -311,6 +311,8 @@ class _DeckTileState extends State<DeckTile> {
                     child: Center(
                       child: b.isTimer && widget.timers != null
                           ? _Countdown(button: b, link: widget.link, timers: widget.timers!, size: s)
+                          : b.isStat
+                          ? _LiveValue(button: b, link: widget.link, size: s)
                           : ButtonIcon(button: b, link: widget.link, size: s * .5),
                     ),
                   ),
@@ -377,4 +379,63 @@ class _Countdown extends StatelessWidget {
       },
     );
   }
+}
+
+/// A live tile's face: the current value with a bar; its glyph until the first numbers.
+class _LiveValue extends StatelessWidget {
+  const _LiveValue({required this.button, required this.link, required this.size});
+  final DeckButton button;
+  final MachineLink link;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<SysStats?>(
+      valueListenable: link.stats,
+      builder: (context, stats, _) {
+        final v = stats?.of(button.stat!);
+        if (v == null) return ButtonIcon(button: button, link: link, size: size * .5);
+        final color = v > .9
+            ? C.danger
+            : v > .7
+            ? C.warn
+            : C.accent;
+        final gb = button.stat == 'ram' && stats!.ramUsed != null && stats.ramTotal != null
+            ? '${_gb(stats.ramUsed!)} / ${_gb(stats.ramTotal!)} ГБ'
+            : null;
+        return SizedBox(
+          width: size * .7,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: size * .3,
+                child: FittedBox(
+                  child: Text(
+                    '${(v * 100).round()}%',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
+                  ),
+                ),
+              ),
+              SizedBox(height: size * .04),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(value: v, minHeight: size * .035, color: color, backgroundColor: C.border),
+              ),
+              if (gb != null) ...[
+                SizedBox(height: size * .03),
+                Text(
+                  gb,
+                  maxLines: 1,
+                  style: TextStyle(fontSize: (size * .075).clamp(8.0, 12.0), color: C.muted),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static String _gb(int bytes) => (bytes / (1 << 30)).toStringAsFixed(bytes >= 10 << 30 ? 0 : 1).replaceAll('.', ',');
 }

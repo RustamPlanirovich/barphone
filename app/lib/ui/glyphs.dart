@@ -21,6 +21,8 @@ const _glyphs = <String, (IconData, Color)>{
   'folder': (Icons.folder_rounded, Color(0xFFE0A63A)),
   'macro': (Icons.bolt_rounded, Color(0xFFFF7A45)),
   'timer': (Icons.timer_outlined, Color(0xFF2EB8A6)),
+  'cpu': (Icons.speed_rounded, Color(0xFF4F7CFF)),
+  'ram': (Icons.memory_rounded, Color(0xFF8E6BFF)),
 };
 
 bool hasGlyph(String? name) => name != null && _glyphs.containsKey(name);

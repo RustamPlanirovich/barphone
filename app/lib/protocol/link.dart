@@ -1,8 +1,10 @@
-// Live WebSocket connection to one paired computer, with reconnection. Pure Dart.
+// Live WebSocket connection to one paired computer, with reconnection (no widgets).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import 'client.dart';
 import 'models.dart';
@@ -66,6 +68,9 @@ class MachineLink {
 
   LinkStatus status = LinkStatus.offline;
   DeckState? state;
+
+  /// Latest numbers for live tiles; only those tiles listen (it changes every ~2 s).
+  final stats = ValueNotifier<SysStats?>(null);
   String? host;
 
   WebSocket? _ws;
@@ -237,6 +242,10 @@ class MachineLink {
           );
           onMachineUpdated(_machine);
           onChanged();
+        } catch (_) {}
+      case 'stats':
+        try {
+          stats.value = SysStats.fromJson(msg);
         } catch (_) {}
       case 'result':
         final c = _pending.remove(msg['req']);
