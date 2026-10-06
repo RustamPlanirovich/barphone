@@ -90,6 +90,8 @@ Future<void> pressButton(BuildContext context, MachineLink link, DeckButton b, v
     showPressError(context, b, res.error);
   } else if (res.muted != null) {
     showNote(context, res.muted! ? 'Звук выключен' : 'Звук включён');
+  } else if (res.value != null && b.isSlider) {
+    showNote(context, '${b.title}: ${(res.value! * 100).round()}% — удерживайте и ведите пальцем');
   }
 }
 

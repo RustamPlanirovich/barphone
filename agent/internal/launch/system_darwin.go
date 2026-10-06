@@ -101,6 +101,10 @@ func (m macLauncher) runSystem(id string) error {
 	return do()
 }
 
+// Brightness has no public API on macOS.
+func (macLauncher) Brightness() (float64, error) { return 0, ErrUnsupported }
+func (macLauncher) SetBrightness(float64) error  { return ErrUnsupported }
+
 func (macLauncher) Volume() (VolumeState, error) {
 	out, err := exec.Command("/usr/bin/osascript", "-e",
 		`set s to get volume settings

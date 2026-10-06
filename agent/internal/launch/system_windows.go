@@ -60,6 +60,9 @@ func (w *winLauncher) runSystem(id string) error {
 			return pressVK(vkVolumeDown)
 		case "mute":
 			return pressVK(vkVolumeMute)
+		case "brightness", "brightness_up", "brightness_down":
+			err, _ := brightnessAction(w, id)
+			return err
 		case "volume": // tap on the slider button toggles mute
 			return w.launchThread.do(func() error {
 				return withVolume(func(v unsafe.Pointer, vt *[16]uintptr) error {

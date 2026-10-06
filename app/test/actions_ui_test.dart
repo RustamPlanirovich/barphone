@@ -122,6 +122,34 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Звук выключен'), findsOneWidget);
   });
+
+  testWidgets('brightness: a tap tells the level, hold and drag shows a brightness panel', (tester) async {
+    final link = _BrightLink();
+    const b = DeckButton(id: 'br', title: 'Яркость', kind: 'system', glyph: 'brightness', control: 'slider');
+    await pumpTile(tester, b, link);
+    expect(find.byIcon(Icons.brightness_6_rounded), findsOneWidget);
+    await tester.tap(find.byType(DeckTile));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Яркость: 70% — удерживайте и ведите пальцем'), findsOneWidget);
+
+    final g = await tester.startGesture(tester.getCenter(find.byType(DeckTile)));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await tester.pump();
+    expect(find.text('Яркость · ← темнее   ярче →'), findsOneWidget);
+    expect(find.byIcon(Icons.brightness_low_rounded), findsOneWidget, reason: '40% from the fake');
+    await g.moveBy(const Offset(200, 0));
+    await tester.pump();
+    await g.up();
+    await tester.pump(const Duration(seconds: 1));
+    expect(link.sets.last, greaterThan(.4));
+  });
+}
+
+class _BrightLink extends FakeLink {
+  @override
+  Future<LaunchResult> launch(String buttonId, {bool newInstance = false, bool confirmed = false}) async =>
+      const LaunchResult.ok(action: 'done', value: .7);
 }
 
 class _MuteLink extends FakeLink {

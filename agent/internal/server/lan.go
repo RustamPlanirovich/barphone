@@ -303,6 +303,21 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 			res.Error = "bad_request"
 			return res
 		}
+		if b.Target == "brightness" {
+			if msg.Value != nil {
+				if err := s.Launcher.SetBrightness(*msg.Value); err != nil {
+					res.Error = launchErr(err)
+					return res
+				}
+			}
+			level, err := s.Launcher.Brightness()
+			if err != nil {
+				res.Error = launchErr(err)
+				return res
+			}
+			res.OK, res.Action, res.Value = true, actionVolume, &level
+			return res
+		}
 		if msg.Value != nil {
 			if err := s.Launcher.SetVolume(*msg.Value); err != nil {
 				res.Error = launchErr(err)
@@ -351,7 +366,12 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 				return res
 			}
 			res.Action = actionDone
-			if isSystem && action.Slider { // the tap toggled mute: tell the phone the new state
+			switch {
+			case isSystem && b.Target == "brightness": // a tap only tells the level
+				if level, err := s.Launcher.Brightness(); err == nil {
+					res.Value = &level
+				}
+			case isSystem && action.Slider: // the tap toggled mute: tell the phone the new state
 				if st, err := s.Launcher.Volume(); err == nil {
 					setVolume(st)
 				}

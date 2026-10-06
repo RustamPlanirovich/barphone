@@ -25,10 +25,11 @@ import (
 type winLauncher struct {
 	launchThread *comThread // ShellExecute must run on a COM-initialized STA thread
 	iconThread   *comThread // separate, so slow icon extraction never delays a button press
+	brightThread *comThread // WMI and DDC/CI are slow: keep them off the launch thread too
 }
 
 func New() Launcher {
-	return &winLauncher{launchThread: newCOMThread(), iconThread: newCOMThread()}
+	return &winLauncher{launchThread: newCOMThread(), iconThread: newCOMThread(), brightThread: newCOMThread()}
 }
 
 func (w *winLauncher) Launch(b store.Button) error {

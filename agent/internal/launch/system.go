@@ -22,6 +22,9 @@ var SystemActions = []SystemAction{
 	{ID: "volume_up", Title: "Громче"},
 	{ID: "volume_down", Title: "Тише"},
 	{ID: "mute", Title: "Без звука"},
+	{ID: "brightness", Title: "Яркость", Slider: true},
+	{ID: "brightness_up", Title: "Ярче"},
+	{ID: "brightness_down", Title: "Темнее"},
 	{ID: "lock", Title: "Заблокировать", Deferred: true},
 	{ID: "sleep", Title: "Сон", Deferred: true},
 	{ID: "display_off", Title: "Выключить экран", Deferred: true},
@@ -45,6 +48,31 @@ type VolumeState struct {
 }
 
 const deferDelay = 400 * time.Millisecond
+
+// brightnessStep is what "Ярче" and "Темнее" change.
+const brightnessStep = 0.1
+
+// stepBrightness moves the brightness one step; a slider tap (dir 0) changes nothing.
+func stepBrightness(l Launcher, dir float64) error {
+	cur, err := l.Brightness()
+	if err != nil || dir == 0 {
+		return err
+	}
+	return l.SetBrightness(min(max(cur+dir*brightnessStep, 0), 1))
+}
+
+// brightnessAction handles the brightness system actions; ok is false for other IDs.
+func brightnessAction(l Launcher, id string) (err error, ok bool) {
+	switch id {
+	case "brightness":
+		return stepBrightness(l, 0), true
+	case "brightness_up":
+		return stepBrightness(l, 1), true
+	case "brightness_down":
+		return stepBrightness(l, -1), true
+	}
+	return nil, false
+}
 
 // MaxTextLen bounds a "text" button.
 const MaxTextLen = 2000

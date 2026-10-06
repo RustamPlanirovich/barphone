@@ -45,6 +45,10 @@ type Launcher interface {
 	// Volume reads the master output volume; SetVolume sets it (0..1) and unmutes.
 	Volume() (VolumeState, error)
 	SetVolume(level float64) error
+	// Brightness reads the screen brightness (0..1); SetBrightness sets every screen
+	// that can be adjusted. ErrUnsupported where the OS gives no way.
+	Brightness() (float64, error)
+	SetBrightness(level float64) error
 	// AppKeys lists the foreground keys (see ForegroundApp) an app/path button stands
 	// for, so a profile can be bound to that app. Nil if it cannot tell.
 	AppKeys(b store.Button) []string

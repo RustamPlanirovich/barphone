@@ -43,6 +43,10 @@ func (xdgLauncher) Volume() (VolumeState, error) { return VolumeState{}, ErrUnsu
 
 func (xdgLauncher) SetVolume(float64) error { return ErrUnsupported }
 
+func (xdgLauncher) Brightness() (float64, error) { return 0, ErrUnsupported }
+
+func (xdgLauncher) SetBrightness(float64) error { return ErrUnsupported }
+
 func WatchForeground(ctx context.Context, onChange func(ForegroundApp)) { <-ctx.Done() }
 
 func (xdgLauncher) AppKeys(store.Button) []string { return nil }

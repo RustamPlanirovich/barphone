@@ -35,6 +35,7 @@ type fakeLauncher struct {
 	fail      bool
 	windows   map[string][]launch.Window // by button title
 	volume    launch.VolumeState
+	bright    float64
 }
 
 func (f *fakeLauncher) Launch(b store.Button) error {
@@ -107,6 +108,17 @@ func (f *fakeLauncher) Minimize(b store.Button, id string) error {
 	return nil
 }
 func (f *fakeLauncher) OpenURL(string) error { return nil }
+func (f *fakeLauncher) Brightness() (float64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.bright, nil
+}
+func (f *fakeLauncher) SetBrightness(level float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bright = level
+	return nil
+}
 
 type fakeStats struct{}
 

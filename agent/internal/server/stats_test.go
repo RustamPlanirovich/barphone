@@ -79,3 +79,46 @@ func TestLiveTiles(t *testing.T) {
 		t.Fatalf("launched: %v", launched)
 	}
 }
+
+func TestBrightnessSlider(t *testing.T) {
+	e := newEnv(t)
+	e.fake.bright = 0.4
+	_, data := e.call("PUT", "/api/deck", store.Deck{Columns: 3, Buttons: []store.Button{
+		{Kind: store.KindSystem, Target: "brightness"},
+		{Kind: store.KindSystem, Target: "brightness_up"},
+	}})
+	var deck store.Deck
+	json.Unmarshal(data, &deck)
+	slider := deck.Buttons[0]
+	if slider.Title != "Яркость" || deck.Buttons[1].Title != "Ярче" {
+		t.Fatalf("titles: %s", data)
+	}
+	status, out := e.pair(e.startPairing(), "dev")
+	if status != 200 {
+		t.Fatal(status)
+	}
+	ws, _, err := e.dial(out["token"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	state := readStateWhere(t, ws, func(m map[string]any) bool { return len(buttons(m)) == 2 })
+	if w := buttons(state)[0].(map[string]any); w["control"] != "slider" || w["glyph"] != "brightness" {
+		t.Fatalf("slider on the wire: %v", w)
+	}
+	send := func(m map[string]any) map[string]any {
+		t.Helper()
+		ws.WriteJSON(m)
+		return readMsg(t, ws, "result")
+	}
+	if r := send(map[string]any{"type": "volume", "req": "1", "id": slider.ID}); r["value"] != 0.4 || r["muted"] != nil {
+		t.Fatalf("read brightness: %v", r)
+	}
+	if r := send(map[string]any{"type": "volume", "req": "2", "id": slider.ID, "value": 0.8}); r["value"] != 0.8 {
+		t.Fatalf("set brightness: %v", r)
+	}
+	// A tap tells the level (it is the launcher's job not to change it).
+	if r := send(map[string]any{"type": "launch", "req": "3", "id": slider.ID}); r["action"] != "done" || r["value"] != 0.8 || r["muted"] != nil {
+		t.Fatalf("tap on the brightness slider: %v", r)
+	}
+}

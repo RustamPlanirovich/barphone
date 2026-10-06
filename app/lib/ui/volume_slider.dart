@@ -8,8 +8,8 @@ import '../protocol/models.dart';
 import 'theme.dart';
 import 'tile.dart' show showPressError;
 
-/// Hold a slider button and drag: right/up = louder, left/down = quieter. The PC volume
-/// follows the finger; a panel in the middle of the screen shows the level.
+/// Hold a slider button (volume or brightness) and drag: right/up = more, left/down =
+/// less. The PC follows the finger; a panel in the middle of the screen shows the level.
 class VolumeDrag {
   VolumeDrag(this.context, this.link, this.button);
 
@@ -31,7 +31,7 @@ class VolumeDrag {
   Future<void> start() async {
     HapticFeedback.mediumImpact();
     _entry = OverlayEntry(
-      builder: (_) => _VolumePanel(title: button.title, level: _level, muted: _muted),
+      builder: (_) => _VolumePanel(title: button.title, brightness: button.glyph == 'brightness', level: _level, muted: _muted),
     );
     Overlay.of(context).insert(_entry!);
     final r = await link.volume(button.id);
@@ -92,8 +92,9 @@ class VolumeDrag {
 }
 
 class _VolumePanel extends StatelessWidget {
-  const _VolumePanel({required this.title, required this.level, required this.muted});
+  const _VolumePanel({required this.title, required this.brightness, required this.level, required this.muted});
   final String title;
+  final bool brightness;
   final ValueNotifier<double?> level;
   final ValueNotifier<bool> muted;
 
@@ -113,7 +114,11 @@ class _VolumePanel extends StatelessWidget {
                 listenable: Listenable.merge([level, muted]),
                 builder: (context, _) {
                   final v = level.value;
-                  final icon = muted.value || v == 0
+                  final icon = brightness
+                      ? (v ?? 0) < .5
+                            ? Icons.brightness_low_rounded
+                            : Icons.brightness_high_rounded
+                      : muted.value || v == 0
                       ? Icons.volume_off_rounded
                       : (v ?? 0) < .5
                       ? Icons.volume_down_rounded
@@ -130,7 +135,10 @@ class _VolumePanel extends StatelessWidget {
                         child: LinearProgressIndicator(value: v, minHeight: 10, color: C.accent, backgroundColor: C.tile),
                       ),
                       const SizedBox(height: 12),
-                      Text('$title · ← тише   громче →', style: const TextStyle(color: C.muted, fontSize: 12)),
+                      Text(
+                        brightness ? '$title · ← темнее   ярче →' : '$title · ← тише   громче →',
+                        style: const TextStyle(color: C.muted, fontSize: 12),
+                      ),
                     ],
                   );
                 },
