@@ -14,29 +14,34 @@ class GridLayout {
   int pages(int buttons) => max(1, (buttons / perPage).ceil());
 }
 
-/// Fits square tiles into [width] x [height]. [portraitColumns] comes from the PC; in
-/// landscape the phone adds columns so tiles keep roughly the same size.
-GridLayout computeGrid(double width, double height, int portraitColumns, {double gap = 12}) {
-  var cols = max(1, portraitColumns);
-  if (width > height && height > 0) {
-    cols = max(cols, (cols * width / height).round());
-  }
-  return _fit(width, height, cols, gap);
-}
+/// Smallest tile worth keeping a row for in landscape.
+const minLandscapeTile = 56.0;
 
-/// One half of a split screen (two computers side by side, [width] is the half): half the
-/// columns the whole screen would get, so the tiles stay about as big as on a full deck.
-GridLayout computeHalfGrid(double width, double height, int portraitColumns, {double gap = 12}) {
-  final full = computeGrid(width * 2, height, portraitColumns, gap: gap);
-  return _fit(width, height, max(1, (full.columns / 2).ceil()), gap);
-}
-
-GridLayout _fit(double width, double height, int cols, double gap) {
-  var tile = (width - gap * (cols + 1)) / cols;
-  var rows = ((height - gap) / (tile + gap)).floor();
-  if (rows < 1) {
-    rows = 1;
-    tile = min(tile, height - 2 * gap);
+/// Fits square tiles into [width] x [height]. [shortSideTiles] comes from the PC ("columns")
+/// and is how many tiles go across the phone's short side.
+///
+/// Portrait: that many columns, as many rows as fit. Landscape: that many rows, and as many
+/// columns as fit (tiles shrink a little to fill the width). With the rows fixed, page dots
+/// or a banner never cost a whole row, and half the screen (two computers side by side)
+/// simply gets half the columns.
+GridLayout computeGrid(double width, double height, int shortSideTiles, {double gap = 12, bool? landscape}) {
+  final n = max(1, shortSideTiles);
+  if (!(landscape ?? width > height)) {
+    var tile = (width - gap * (n + 1)) / n;
+    var rows = ((height - gap) / (tile + gap)).floor();
+    if (rows < 1) {
+      rows = 1;
+      tile = min(tile, height - 2 * gap);
+    }
+    return GridLayout(n, rows, max(tile, 1), gap);
   }
+  double rowFit(int r) => (height - gap * (r + 1)) / r;
+  var rows = n;
+  while (rows > 1 && rowFit(rows) < minLandscapeTile) {
+    rows--;
+  }
+  final fit = rowFit(rows);
+  final cols = max(1, ((width - gap) / (fit + gap)).round());
+  final tile = min(fit, (width - gap * (cols + 1)) / cols);
   return GridLayout(cols, rows, max(tile, 1), gap);
 }

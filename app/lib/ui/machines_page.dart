@@ -162,11 +162,11 @@ class _MachineCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        StatusDot(link.status, size: 8),
+                        StatusDot(link.shownStatus, size: 8),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            [statusText(link.status), if (buttons != null) '$buttons кн.'].join(' · '),
+                            [statusText(link.shownStatus), if (buttons != null) '$buttons кн.'].join(' · '),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: C.muted, fontSize: 13),

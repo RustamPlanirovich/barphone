@@ -81,7 +81,7 @@ class _DeckPageState extends State<DeckPage> {
   }
 
   GridLayout _grid(double width, double height, int columns) =>
-      widget.half ? computeHalfGrid(width, height, columns, gap: 12) : computeGrid(width, height, columns, gap: 12);
+      computeGrid(width, height, columns, gap: 12, landscape: MediaQuery.orientationOf(context) == Orientation.landscape);
 
   Widget _body(BuildContext context, MachineLink link) {
     final st = link.state;
@@ -94,7 +94,7 @@ class _DeckPageState extends State<DeckPage> {
       );
     }
     if (st == null) {
-      return link.status == LinkStatus.connecting
+      return link.quiet
           ? Notice(icon: Icons.wifi_find_rounded, title: 'Подключаюсь к «${link.machine.name}»…', busy: true)
           : _offlineNotice(link);
     }
@@ -106,11 +106,13 @@ class _DeckPageState extends State<DeckPage> {
         text: 'Добавьте кнопки на компьютере: значок barphone в трее → «Открыть настройки».',
       );
     }
-    final online = link.status == LinkStatus.online;
-    return Column(
+    // A dropped connection comes back in the background: the deck stays as it is and a press
+    // waits for the reconnect. Only a computer that stays away gets dimmed, with a banner on
+    // top (the grid itself does not move).
+    final live = link.quiet;
+    return Stack(
       children: [
-        if (!online) _OfflineBanner(app: widget.app, link: link),
-        Expanded(
+        Positioned.fill(
           // A short fade marks a profile switch (one PageView at a time: they share a controller).
           child: TweenAnimationBuilder<double>(
             key: ValueKey(deck.id),
@@ -141,7 +143,7 @@ class _DeckPageState extends State<DeckPage> {
                           spacing: g.gap,
                           runSpacing: g.gap,
                           children: [
-                            for (final b in slice) DeckTile(key: ValueKey(b.id), button: b, link: link, size: g.tile, enabled: online),
+                            for (final b in slice) DeckTile(key: ValueKey(b.id), button: b, link: link, size: g.tile, enabled: live),
                           ],
                         ),
                       ),
@@ -159,6 +161,13 @@ class _DeckPageState extends State<DeckPage> {
             ),
           ),
         ),
+        if (!live)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _OfflineBanner(app: widget.app, link: link),
+          ),
       ],
     );
   }
@@ -218,7 +227,7 @@ class _Header extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 10, 12, 4),
         child: Row(
           children: [
-            StatusDot(link.status),
+            StatusDot(link.shownStatus),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -228,10 +237,10 @@ class _Header extends StatelessWidget {
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
               ),
             ),
-            if (link.status != LinkStatus.online)
+            if (!link.quiet)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: Text(statusText(link.status), style: TextStyle(color: statusColor(link.status), fontSize: 13)),
+                child: Text(statusText(link.shownStatus), style: TextStyle(color: statusColor(link.shownStatus), fontSize: 13)),
               ),
             if (profileName != null) _ProfileChip(name: profileName!, pinned: pinned, onTap: onProfileTap),
           ],
@@ -289,7 +298,7 @@ class _OfflineBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
       decoration: BoxDecoration(
         color: C.surface,
@@ -301,10 +310,7 @@ class _OfflineBanner extends StatelessWidget {
           const Icon(Icons.cloud_off_rounded, size: 18, color: C.muted),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              link.status == LinkStatus.connecting ? 'Подключение…' : 'Нет связи — показана последняя дека',
-              style: const TextStyle(color: C.muted, fontSize: 13),
-            ),
+            child: Text('Нет связи — показана последняя дека', style: const TextStyle(color: C.muted, fontSize: 13)),
           ),
           _WakeOrRetry(app: app, link: link, compact: true),
         ],

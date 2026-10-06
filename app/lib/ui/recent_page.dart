@@ -24,7 +24,7 @@ class RecentPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = link.state?.recentButtons ?? const [];
-    final online = link.status == LinkStatus.online;
+    final online = link.quiet;
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

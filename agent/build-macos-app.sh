@@ -19,6 +19,7 @@ iconutil -c icns -o "$APP/Contents/Resources/barphone.icns" "$TMP/barphone.icons
 
 # LSUIElement: menu-bar only, no Dock icon. The usage strings are what macOS shows when it
 # asks for local network access (phones, mDNS) and for driving System Events (keystrokes).
+# NSAppSleepDisabled: no App Nap — a napping agent answers pings late and phones drop it.
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -34,6 +35,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>LSUIElement</key><true/>
+  <key>NSAppSleepDisabled</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>barphone принимает нажатия кнопок с телефона по локальной сети.</string>
   <key>NSBonjourServices</key><array><string>_barphone._tcp</string></array>

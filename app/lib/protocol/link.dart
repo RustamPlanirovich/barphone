@@ -77,11 +77,37 @@ class MachineLink {
 
   bool get running => _running;
 
-  bool _wasOnline = false;
+  /// How long a lost connection is hidden from the user while it comes back on its own.
+  static const graceTime = Duration(seconds: 45);
 
-  /// Connected, or reconnecting after having been connected (a network blip should not
-  /// reshuffle the screen).
-  bool get present => status == LinkStatus.online || (status == LinkStatus.connecting && _wasOnline);
+  DateTime? _downSince; // lost the connection at; null while online or if never connected
+  Timer? _graceEnd;
+  final _onlineWaiters = <Completer<void>>[];
+
+  /// Online, or dropped less than [graceTime] ago and reconnecting in the background: the
+  /// screen keeps showing this computer as if nothing happened.
+  bool get present {
+    if (status == LinkStatus.online) return true;
+    final down = _downSince;
+    return status != LinkStatus.unauthorized && down != null && DateTime.now().difference(down) < graceTime;
+  }
+
+  /// Nothing to tell the user about the connection: [present], or the first attempt is
+  /// still under way.
+  bool get quiet => present || (status == LinkStatus.connecting && _downSince == null && _failures == 0);
+
+  /// Status for the screen, steady between attempts: a background reconnect reads as
+  /// "connecting", a computer that stays away as "offline".
+  LinkStatus get shownStatus => switch (status) {
+    LinkStatus.online || LinkStatus.unauthorized => status,
+    _ => quiet ? LinkStatus.connecting : LinkStatus.offline,
+  };
+
+  void _markDown() {
+    _downSince = DateTime.now();
+    _graceEnd?.cancel();
+    _graceEnd = Timer(graceTime, onChanged); // the screen may need to show "offline" now
+  }
 
   /// Replaces stored data (e.g. after re-pairing or a new address from mDNS).
   void update(SavedMachine m, {bool reconnect = false}) {
@@ -98,6 +124,7 @@ class MachineLink {
   void start() {
     if (_running) return;
     _running = true;
+    if (_downSince != null) _markDown(); // back from the background: a fresh grace period
     _connect();
   }
 
@@ -236,9 +263,14 @@ class MachineLink {
   /// Minimizes one window of the button's app, or all of them without [windowId].
   Future<LaunchResult> minimize(String buttonId, [String? windowId]) => _request({'type': 'minimize', 'id': buttonId, 'window': ?windowId});
 
-  Future<LaunchResult> _request(Map<String, Object> msg) {
+  Future<LaunchResult> _request(Map<String, Object> msg) async {
+    if (status != LinkStatus.online && quiet) {
+      // A press during a background reconnect waits for it instead of failing.
+      reconnectNow();
+      await _waitOnline(const Duration(seconds: 4));
+    }
     final ws = _ws;
-    if (ws == null || status != LinkStatus.online) return Future.value(const LaunchResult.fail('offline'));
+    if (ws == null || status != LinkStatus.online) return const LaunchResult.fail('offline');
     final req = 'r${++_seq}';
     final c = Completer<LaunchResult>();
     _pending[req] = c;
@@ -274,14 +306,31 @@ class MachineLink {
     ws?.close();
   }
 
+  Future<void> _waitOnline(Duration limit) {
+    final c = Completer<void>();
+    _onlineWaiters.add(c);
+    return c.future.timeout(limit, onTimeout: () => _onlineWaiters.remove(c));
+  }
+
   void _set(LinkStatus s) {
     if (status == s) return;
+    final was = status;
     status = s;
-    if (s == LinkStatus.online) _wasOnline = true;
+    if (s == LinkStatus.online) {
+      _downSince = null;
+      _graceEnd?.cancel();
+      for (final c in _onlineWaiters) {
+        c.complete();
+      }
+      _onlineWaiters.clear();
+    } else if (was == LinkStatus.online) {
+      _markDown();
+    }
     onChanged();
   }
 
   void dispose() {
     stop();
+    _graceEnd?.cancel();
   }
 }

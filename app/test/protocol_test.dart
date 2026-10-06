@@ -66,20 +66,33 @@ void main() {
       expect(g.rows, greaterThanOrEqualTo(4));
       expect(g.tile, closeTo((400 - 12 * 4) / 3, 0.001));
     });
-    test('landscape adds columns', () {
+    test('landscape: the configured count becomes rows, columns fill the width', () {
       final g = computeGrid(800, 360, 3);
+      expect(g.rows, 3);
       expect(g.columns, greaterThan(3));
-      expect(g.rows, greaterThanOrEqualTo(1));
       expect(g.pages(20), (20 / g.perPage).ceil());
     });
-    test('half of a split screen gets half the columns, tiles stay big', () {
-      final full = computeGrid(720, 360, 3);
-      expect(full.columns, 6);
-      final half = computeHalfGrid(360, 360, 3);
-      expect(half.columns, 3);
-      expect(half.rows, greaterThanOrEqualTo(full.rows));
-      expect(half.tile, closeTo(full.tile, full.tile * .1));
-      expect(computeHalfGrid(445, 323, 3).columns, (computeGrid(890, 323, 3).columns / 2).ceil());
+    // A 360 dp phone in landscape with a 2-column deck: header, hints and safe area leave
+    // about 790 x 287 for the grid; page dots take 18 more.
+    test('page dots do not cost a row', () {
+      final one = computeGrid(790, 287, 2);
+      final many = computeGrid(790, 287 - 18, 2);
+      expect([one.rows, one.columns], [2, 6]);
+      expect([many.rows, many.columns], [2, 6]);
+      expect(many.tile, greaterThan(100));
+    });
+    test('half of a split screen: same rows, half the columns', () {
+      for (final h in [287.0, 269.0]) {
+        final g = computeGrid(395, h, 2, landscape: true);
+        expect([g.rows, g.columns], [2, 3], reason: 'height $h');
+      }
+      final half = computeGrid(395, 287, 2, landscape: true);
+      expect(half.tile, closeTo(computeGrid(790, 287, 2).tile, 10));
+    });
+    test('landscape drops rows only when tiles would get tiny', () {
+      expect(computeGrid(800, 300, 4).rows, 4);
+      expect(computeGrid(800, 200, 4).rows, 2);
+      expect(computeGrid(800, 100, 4).rows, 1);
     });
   });
 
