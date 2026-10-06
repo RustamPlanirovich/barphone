@@ -101,6 +101,11 @@ func (m macLauncher) runSystem(id string) error {
 	return do()
 }
 
+// The mouse needs CGEvent (cgo); typing goes through System Events as for buttons.
+func (macLauncher) MovePointer(int, int) error { return ErrUnsupported }
+func (macLauncher) Click(string, bool) error   { return ErrUnsupported }
+func (macLauncher) Scroll(int, int) error      { return ErrUnsupported }
+
 // Brightness has no public API on macOS.
 func (macLauncher) Brightness() (float64, error) { return 0, ErrUnsupported }
 func (macLauncher) SetBrightness(float64) error  { return ErrUnsupported }

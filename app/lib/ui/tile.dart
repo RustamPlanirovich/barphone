@@ -8,6 +8,7 @@ import '../protocol/models.dart';
 import '../timers.dart';
 import 'glyphs.dart';
 import 'theme.dart';
+import 'trackpad.dart';
 import 'volume_slider.dart';
 import 'window_chooser.dart';
 
@@ -280,6 +281,8 @@ class _DeckTileState extends State<DeckTile> {
                 final timers = widget.timers;
                 if (timers != null) pressTimer(context, timers, widget.link, b);
               }
+            : b.isTrackpad
+            ? () => openTrackpad(context, widget.link, b)
             : () => pressButton(context, widget.link, b, _setFlash),
         // Long press: app buttons offer their open windows, the volume button turns into a slider.
         onLongPress: widget.enabled && b.launchesApp ? () => showButtonWindows(context, widget.link, b, _setFlash) : null,

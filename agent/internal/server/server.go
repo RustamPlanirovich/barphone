@@ -225,6 +225,8 @@ func wireButtons(buttons []store.Button) []wireButton {
 			wb.Seconds, _ = strconv.Atoi(b.Target)
 		case store.KindStat:
 			wb.Glyph, wb.Stat = b.Target, b.Target
+		case store.KindTrackpad:
+			wb.Glyph = string(b.Kind)
 		case store.KindSystem:
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
@@ -372,7 +374,8 @@ func (s *Server) iconWorker(ctx context.Context) {
 
 // iconFor extracts (once per target) and stores a native icon; "" if there is none.
 func (s *Server) iconFor(kind store.ButtonKind, target string) string {
-	if kind == store.KindFolder || kind == store.KindMacro || kind == store.KindTimer || kind == store.KindStat {
+	switch kind {
+	case store.KindFolder, store.KindMacro, store.KindTimer, store.KindStat, store.KindTrackpad:
 		return "" // a built-in glyph unless the user sets an icon
 	}
 	key := iconKey(kind, target)

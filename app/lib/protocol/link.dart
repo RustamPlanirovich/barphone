@@ -274,6 +274,26 @@ class MachineLink {
   /// Minimizes one window of the button's app, or all of them without [windowId].
   Future<LaunchResult> minimize(String buttonId, [String? windowId]) => _request({'type': 'minimize', 'id': buttonId, 'window': ?windowId});
 
+  // ---- trackpad (only on behalf of a "trackpad" button; see docs/protocol.md) ----
+
+  /// Moves the PC's cursor; not answered, sent many times a second.
+  void pointer(String buttonId, int dx, int dy) => _send({'type': 'pointer', 'id': buttonId, 'dx': dx, 'dy': dy});
+
+  /// The wheel, in 1/120 notches; dy > 0 = up.
+  void scroll(String buttonId, int dx, int dy) => _send({'type': 'scroll', 'id': buttonId, 'dx': dx, 'dy': dy});
+
+  Future<LaunchResult> click(String buttonId, String button, {bool double = false}) =>
+      _request({'type': 'click', 'id': buttonId, 'button': button, if (double) 'double': true});
+
+  Future<LaunchResult> typeText(String buttonId, String text) => _request({'type': 'type', 'id': buttonId, 'text': text});
+
+  Future<LaunchResult> key(String buttonId, String key) => _request({'type': 'key', 'id': buttonId, 'key': key});
+
+  void _send(Map<String, Object> msg) {
+    final ws = _ws;
+    if (ws != null && status == LinkStatus.online) ws.add(jsonEncode(msg));
+  }
+
   Future<LaunchResult> _request(Map<String, Object> msg) async {
     if (status != LinkStatus.online && quiet) {
       // A press during a background reconnect waits for it instead of failing.

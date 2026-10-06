@@ -25,7 +25,7 @@ class MachineInfo {
 class DeckButton {
   final String id;
   final String title;
-  final String kind; // app | path | url | keys | text | system | folder | macro | timer | stat
+  final String kind; // app | path | url | keys | text | system | folder | macro | timer | stat | trackpad
   final String? icon;
   final String? glyph; // built-in picture: "keys", "text" or a system action id
   final String? control; // "slider": hold and drag (volume)
@@ -56,6 +56,9 @@ class DeckButton {
 
   /// Counts down [seconds] on the phone; the agent is not asked.
   bool get isTimer => kind == 'timer';
+
+  /// Opens the trackpad and keyboard screen on the phone.
+  bool get isTrackpad => kind == 'trackpad';
 
   /// Shows a number from the PC's "stats" messages.
   bool get isStat => kind == 'stat' && stat != null;

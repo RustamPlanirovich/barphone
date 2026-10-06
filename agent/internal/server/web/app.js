@@ -54,10 +54,10 @@ const iconURL = (hash) => `/api/icon/${hash}.png`;
 const KIND_LABEL = {
   app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
   keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие', folder: 'Папка',
-  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер', stat: 'Живая плитка',
+  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер', stat: 'Живая плитка', trackpad: 'Трекпад',
 };
 const GLYPH = {
-  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️', cpu: '📈', ram: '🧠',
+  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️', cpu: '📈', ram: '🧠', trackpad: '🖱️',
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   brightness: '🔆', brightness_up: '☀️', brightness_down: '🔅',
@@ -664,6 +664,11 @@ function renderSteps(force = false) {
   )));
 }
 
+$('#addTrackpad').onclick = () => {
+  $('#addDialog').close();
+  addButton({ kind: 'trackpad', title: 'Трекпад' });
+};
+
 for (const [id, target, title] of [['#statCpu', 'cpu', 'Процессор'], ['#statRam', 'ram', 'Память']]) {
   $(id).onclick = () => {
     $('#addDialog').close();
@@ -819,7 +824,7 @@ function openEdit(id) {
   $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие', timer: 'Длительность, минут' }[b.kind] || 'Что запускать';
   $('#editTarget').value = action ? action.title : b.kind === 'timer' ? timerMinutes(b) : b.target;
   $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
-  $('#editTargetRow').hidden = ['text', 'folder', 'macro', 'stat'].includes(b.kind);
+  $('#editTargetRow').hidden = ['text', 'folder', 'macro', 'stat', 'trackpad'].includes(b.kind);
   $('#editTextRow').hidden = b.kind !== 'text';
   $('#editText').value = b.kind === 'text' ? b.target : '';
   $('#editArgs').value = b.args || '';
@@ -827,7 +832,7 @@ function openEdit(id) {
   $('#editRunning').value = b.onRunning || '';
   $('#editRunningRow').hidden = !['app', 'path'].includes(b.kind);
   // Typing keys/text would land in this browser tab, and power actions need the phone's confirmation.
-  $('#editTest').hidden = ['keys', 'text', 'folder', 'timer'].includes(b.kind) || Boolean(action && action.confirm);
+  $('#editTest').hidden = ['keys', 'text', 'folder', 'timer', 'trackpad'].includes(b.kind) || Boolean(action && action.confirm);
   renderEditPlace(b);
   const hints = {
     app: ' · чтобы выбрать другое, добавьте новую кнопку',
@@ -837,6 +842,7 @@ function openEdit(id) {
     macro: ' · уже открытая программа выводится вперёд; пока макрос идёт, второй не запустится',
     timer: ' · отсчёт идёт на телефоне: тап — старт, ещё тап — остановить',
     stat: ' · на телефоне показывает загрузку и обновляется каждые пару секунд; тап — диспетчер задач',
+    trackpad: ' · тап открывает на телефоне трекпад и клавиатуру; удалите кнопку — и телефон больше не сможет управлять мышью',
   };
   $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
     (action && action.slider ? (action.id === 'volume'

@@ -208,6 +208,8 @@ func defaultTitle(b store.Button) string {
 	case store.KindWait:
 		ms, _ := strconv.Atoi(b.Target)
 		return "Пауза " + strings.Replace(strconv.FormatFloat(float64(ms)/1000, 'f', -1, 64), ".", ",", 1) + " с"
+	case store.KindTrackpad:
+		return "Трекпад"
 	case store.KindStat:
 		if b.Target == "ram" {
 			return "Память"

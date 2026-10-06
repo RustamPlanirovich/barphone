@@ -30,11 +30,14 @@ const (
 	KindWait   ButtonKind = "wait"   // a macro step only: pause for Target milliseconds
 	KindTimer  ButtonKind = "timer"  // counts down Target seconds on the phone
 	KindStat   ButtonKind = "stat"   // live tile: Target "cpu" or "ram"
+	// KindTrackpad opens the phone's trackpad and keyboard; the agent accepts pointer and
+	// typing messages only on behalf of such a button.
+	KindTrackpad ButtonKind = "trackpad"
 )
 
 func (k ButtonKind) Valid() bool {
 	switch k {
-	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer, KindStat:
+	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer, KindStat, KindTrackpad:
 		return true
 	}
 	return false

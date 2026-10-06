@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"io"
 	"log"
@@ -36,6 +37,7 @@ type fakeLauncher struct {
 	windows   map[string][]launch.Window // by button title
 	volume    launch.VolumeState
 	bright    float64
+	input     []string // trackpad: "move 3,-2", "click right", "scroll 0,120"
 }
 
 func (f *fakeLauncher) Launch(b store.Button) error {
@@ -108,6 +110,24 @@ func (f *fakeLauncher) Minimize(b store.Button, id string) error {
 	return nil
 }
 func (f *fakeLauncher) OpenURL(string) error { return nil }
+func (f *fakeLauncher) MovePointer(dx, dy int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.input = append(f.input, fmt.Sprintf("move %d,%d", dx, dy))
+	return nil
+}
+func (f *fakeLauncher) Click(button string, double bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.input = append(f.input, fmt.Sprintf("click %s %v", button, double))
+	return nil
+}
+func (f *fakeLauncher) Scroll(dx, dy int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.input = append(f.input, fmt.Sprintf("scroll %d,%d", dx, dy))
+	return nil
+}
 func (f *fakeLauncher) Brightness() (float64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

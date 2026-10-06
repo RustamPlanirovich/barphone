@@ -140,6 +140,14 @@ type inbound struct {
 	Window    string   `json:"window"`    // focus: which window
 	Confirmed bool     `json:"confirmed"` // launch: the user confirmed a dangerous action
 	Value     *float64 `json:"value"`     // volume: level to set (0..1); absent = just read
+
+	// Trackpad input (see remoteInput).
+	DX     int    `json:"dx"`
+	DY     int    `json:"dy"`
+	Button string `json:"button"`
+	Double bool   `json:"double"`
+	Text   string `json:"text"`
+	Key    string `json:"key"`
 }
 
 // Result actions, see docs/protocol.md.
@@ -228,6 +236,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		switch msg.Type {
 		case "launch", "focus", "windows", "volume", "minimize":
 			c.queue(mustJSON(s.pressButton(msg, canChoose)))
+		case "pointer", "scroll", "click", "type", "key":
+			if res, answer := s.remoteInput(msg); answer {
+				c.queue(mustJSON(res))
+			}
 		default:
 			// Unknown types are ignored so newer phones can talk to older agents.
 		}
@@ -411,9 +423,11 @@ func (s *Server) pushRecent(id string) {
 	}
 }
 
-// agentHandles reports whether pressing a kind is the agent's business: a folder opens
-// and a timer counts down on the phone without asking the agent.
-func agentHandles(k store.ButtonKind) bool { return k != store.KindFolder && k != store.KindTimer }
+// agentHandles reports whether pressing a kind is the agent's business: a folder, a timer
+// and the trackpad screen open on the phone without asking the agent.
+func agentHandles(k store.ButtonKind) bool {
+	return k != store.KindFolder && k != store.KindTimer && k != store.KindTrackpad
+}
 
 func mustJSON(v any) []byte {
 	data, err := json.Marshal(v)

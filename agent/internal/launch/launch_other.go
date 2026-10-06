@@ -45,6 +45,12 @@ func (xdgLauncher) SetVolume(float64) error { return ErrUnsupported }
 
 func (xdgLauncher) Brightness() (float64, error) { return 0, ErrUnsupported }
 
+func (xdgLauncher) MovePointer(int, int) error { return ErrUnsupported }
+
+func (xdgLauncher) Click(string, bool) error { return ErrUnsupported }
+
+func (xdgLauncher) Scroll(int, int) error { return ErrUnsupported }
+
 func (xdgLauncher) SetBrightness(float64) error { return ErrUnsupported }
 
 func WatchForeground(ctx context.Context, onChange func(ForegroundApp)) { <-ctx.Done() }

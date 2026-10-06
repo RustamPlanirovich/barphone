@@ -69,8 +69,8 @@ func (n *deckNormalizer) buttons(in []store.Button, where level) ([]store.Button
 			return nil, errors.New("папку нельзя положить в другую папку")
 		case b.Kind == store.KindWait && where != inMacro:
 			return nil, errors.New("пауза бывает только шагом макроса")
-		case where == inMacro && (b.Kind == store.KindFolder || b.Kind == store.KindMacro || b.Kind == store.KindTimer || b.Kind == store.KindStat):
-			return nil, errors.New("в макрос нельзя добавить папку, таймер, показатель или другой макрос")
+		case where == inMacro && !stepKind(b.Kind):
+			return nil, errors.New("в макрос можно добавить только действия и паузы")
 		case where == inMacro && b.Kind == store.KindSystem:
 			if a, ok := launch.LookupSystemAction(b.Target); ok && a.Confirm {
 				return nil, fmt.Errorf("«%s» — только отдельной кнопкой, с подтверждением на телефоне", a.Title)
@@ -99,6 +99,8 @@ func (n *deckNormalizer) buttons(in []store.Button, where level) ([]store.Button
 		kids, steps := b.Buttons, b.Steps
 		b.Buttons, b.Steps = nil, nil
 		switch b.Kind {
+		case store.KindTrackpad:
+			b.Target = ""
 		case store.KindFolder:
 			b.Target = ""
 			children, err := n.buttons(kids, inFolder)
@@ -291,6 +293,15 @@ func (s *Server) normalizeProfiles(c *store.Config, in []store.Profile) ([]store
 		}
 	}
 	return out, nil
+}
+
+// stepKind: what a macro step can be.
+func stepKind(k store.ButtonKind) bool {
+	switch k {
+	case store.KindApp, store.KindPath, store.KindURL, store.KindKeys, store.KindText, store.KindSystem, store.KindWait:
+		return true
+	}
+	return false
 }
 
 func ruleName(rule store.AppRule, key string) string {

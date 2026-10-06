@@ -49,6 +49,11 @@ type Launcher interface {
 	// that can be adjusted. ErrUnsupported where the OS gives no way.
 	Brightness() (float64, error)
 	SetBrightness(level float64) error
+	// Pointer input from the phone's trackpad: a relative move in pixels, a click
+	// ("left", "right", "middle"), the wheel in 1/120 notches (dy > 0 = up).
+	MovePointer(dx, dy int) error
+	Click(button string, double bool) error
+	Scroll(dx, dy int) error
 	// AppKeys lists the foreground keys (see ForegroundApp) an app/path button stands
 	// for, so a profile can be bound to that app. Nil if it cannot tell.
 	AppKeys(b store.Button) []string
@@ -122,8 +127,8 @@ func Validate(b store.Button) error {
 			return fmt.Errorf("неизвестное действие %q", b.Target)
 		}
 		return nil
-	case store.KindFolder, store.KindMacro:
-		return nil // their buttons and steps are checked one by one
+	case store.KindFolder, store.KindMacro, store.KindTrackpad:
+		return nil // buttons and steps are checked one by one; a trackpad has no target
 	case store.KindWait:
 		ms, err := strconv.Atoi(strings.TrimSpace(b.Target))
 		if err != nil || ms < MinWait || ms > MaxWait {
