@@ -54,10 +54,10 @@ const iconURL = (hash) => `/api/icon/${hash}.png`;
 const KIND_LABEL = {
   app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
   keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие', folder: 'Папка',
-  macro: 'Макрос', wait: 'Пауза',
+  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер',
 };
 const GLYPH = {
-  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️',
+  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️',
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   lock: '🔒', sleep: '🌙', display_off: '🖥️', shutdown: '🔌', restart: '🔄',
@@ -663,6 +663,17 @@ function renderSteps(force = false) {
   )));
 }
 
+$('#timerForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const seconds = Math.round(Number($('#timerMinutes').value) * 60);
+  addButton({ kind: 'timer', target: String(Math.min(86400, Math.max(1, seconds))), title: $('#timerTitle').value.trim() });
+  e.target.reset();
+  $('#addDialog').close();
+});
+
+// Timer durations are stored in seconds and edited in minutes ("1,5" = 90 s).
+const timerMinutes = (b) => String(Number(b.target) / 60).replace('.', ',');
+
 $('#macroForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const title = $('#macroTitle').value.trim();
@@ -796,8 +807,8 @@ function openEdit(id) {
   if (!b) return;
   const action = b.kind === 'system' ? systemAction(b.target) : null;
   $('#editTitle').value = b.title;
-  $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие' }[b.kind] || 'Что запускать';
-  $('#editTarget').value = action ? action.title : b.target;
+  $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие', timer: 'Длительность, минут' }[b.kind] || 'Что запускать';
+  $('#editTarget').value = action ? action.title : b.kind === 'timer' ? timerMinutes(b) : b.target;
   $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
   $('#editTargetRow').hidden = ['text', 'folder', 'macro'].includes(b.kind);
   $('#editTextRow').hidden = b.kind !== 'text';
@@ -807,7 +818,7 @@ function openEdit(id) {
   $('#editRunning').value = b.onRunning || '';
   $('#editRunningRow').hidden = !['app', 'path'].includes(b.kind);
   // Typing keys/text would land in this browser tab, and power actions need the phone's confirmation.
-  $('#editTest').hidden = ['keys', 'text', 'folder'].includes(b.kind) || Boolean(action && action.confirm);
+  $('#editTest').hidden = ['keys', 'text', 'folder', 'timer'].includes(b.kind) || Boolean(action && action.confirm);
   renderEditPlace(b);
   const hints = {
     app: ' · чтобы выбрать другое, добавьте новую кнопку',
@@ -815,6 +826,7 @@ function openEdit(id) {
     text: ' · вводится в активное окно, перенос строки — Enter',
     folder: ' · на телефоне открывается тапом; кнопки внутри — в самой папке на деке',
     macro: ' · уже открытая программа выводится вперёд; пока макрос идёт, второй не запустится',
+    timer: ' · отсчёт идёт на телефоне: тап — старт, ещё тап — остановить',
   };
   $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
     (action && action.slider ? ' · на телефоне: тап — без звука, удержание и ведение пальцем — громкость' : '') +
@@ -850,11 +862,23 @@ function renderEditPreview() {
 
 function bindEditField(sel, field) {
   $(sel).addEventListener('input', (e) => {
-    const value = e.target.value;
+    let value = e.target.value;
     const b = editing();
     // Don't save a combination that is still being typed ("Ctrl+Shift+").
     if (b && b.kind === 'keys' && field === 'target' && (!value.trim() || /\+\s*$/.test(value))) return;
-    editDeck(() => { const cur = editing(); if (cur) cur[field] = value; }, 600);
+    let retitle = false;
+    if (b && b.kind === 'timer' && field === 'target') {
+      const seconds = Math.round(Number(value.replace(',', '.')) * 60);
+      if (!(seconds >= 1 && seconds <= 86400)) return;
+      value = String(seconds);
+      retitle = /^Таймер \d/.test(b.title); // an automatic title follows the duration
+    }
+    editDeck(() => {
+      const cur = editing();
+      if (!cur) return;
+      cur[field] = value;
+      if (retitle) cur.title = '';
+    }, 600);
   });
 }
 bindEditField('#editTitle', 'title');

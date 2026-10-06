@@ -170,8 +170,9 @@ class _DeckPageState extends State<DeckPage> {
                                   button: item,
                                   link: link,
                                   size: g.tile,
-                                  enabled: live || item.isFolder,
+                                  enabled: live || item.isFolder || item.isTimer,
                                   onOpenFolder: (f) => setState(() => _folderId = f.id),
+                                  timers: widget.app.timers,
                                 )
                               else
                                 BackTile(

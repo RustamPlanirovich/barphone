@@ -93,3 +93,49 @@ func TestFolders(t *testing.T) {
 		t.Fatalf("«Проверить» on a folder: %d", resp.StatusCode)
 	}
 }
+
+func TestTimers(t *testing.T) {
+	e := newEnv(t)
+	for _, bad := range []string{"0", "86401", "abc", ""} {
+		if resp, data := e.call("PUT", "/api/deck", store.Deck{Columns: 3, Buttons: []store.Button{{Kind: store.KindTimer, Target: bad}}}); resp.StatusCode != 400 {
+			t.Errorf("timer %q must be rejected: %s", bad, data)
+		}
+	}
+	if resp, _ := e.call("PUT", "/api/deck", store.Deck{Columns: 3, Buttons: []store.Button{
+		{Kind: store.KindMacro, Steps: []store.Button{{Kind: store.KindTimer, Target: "60"}}},
+	}}); resp.StatusCode != 400 {
+		t.Error("a timer is not a macro step")
+	}
+	_, data := e.call("PUT", "/api/deck", store.Deck{Columns: 3, Buttons: []store.Button{
+		{Kind: store.KindTimer, Target: " 1500 "},
+		{Kind: store.KindTimer, Target: "90", Title: "Чай"},
+		{Kind: store.KindFolder, Buttons: []store.Button{{Kind: store.KindTimer, Target: "30"}}},
+	}})
+	var deck store.Deck
+	json.Unmarshal(data, &deck)
+	if len(deck.Buttons) != 3 || deck.Buttons[0].Title != "Таймер 25 мин" || deck.Buttons[0].Target != "1500" || deck.Buttons[2].Buttons[0].Title != "Таймер 0:30" {
+		t.Fatalf("timers: %s", data)
+	}
+
+	status, out := e.pair(e.startPairing(), "dev")
+	if status != 200 {
+		t.Fatal(status)
+	}
+	ws, _, err := e.dial(out["token"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	state := readStateWhere(t, ws, func(m map[string]any) bool { return len(buttons(m)) == 3 })
+	tea := buttons(state)[1].(map[string]any)
+	if tea["kind"] != "timer" || tea["glyph"] != "timer" || tea["seconds"] != float64(90) || tea["title"] != "Чай" {
+		t.Fatalf("timer on the wire: %v", tea)
+	}
+	ws.WriteJSON(map[string]any{"type": "launch", "req": "1", "id": deck.Buttons[1].ID})
+	if r := readMsg(t, ws, "result"); r["error"] != "unsupported" {
+		t.Fatalf("a timer runs on the phone: %v", r)
+	}
+	if resp, _ := e.call("POST", "/api/buttons/"+deck.Buttons[1].ID+"/launch", nil); resp.StatusCode != 400 {
+		t.Fatal("«Проверить» on a timer")
+	}
+}

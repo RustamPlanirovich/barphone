@@ -166,6 +166,15 @@
       <label>Название <input id="macroTitle" maxlength="64" placeholder="Начать работу" required></label>
       <div class="actions"><button class="btn primary" type="submit">Создать и добавить шаги</button></div>
     </form>
+    <form class="form more-item" id="timerForm">
+      <h4>⏲️ Таймер</h4>
+      <p class="small muted">Отсчёт идёт на телефоне: тап — старт, ещё тап — остановить. Когда время выйдет, телефон завибрирует и покажет сообщение. Например, Pomodoro на 25 минут.</p>
+      <div class="row">
+        <label>Минут <input id="timerMinutes" type="number" min="0.1" max="1440" step="any" value="25" required></label>
+        <label>Название <span class="muted">(необязательно)</span> <input id="timerTitle" maxlength="64" placeholder="Pomodoro"></label>
+      </div>
+      <div class="actions"><button class="btn primary" type="submit">Создать таймер</button></div>
+    </form>
   </div>
 </dialog>
 

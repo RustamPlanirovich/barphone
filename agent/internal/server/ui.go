@@ -208,6 +208,12 @@ func defaultTitle(b store.Button) string {
 	case store.KindWait:
 		ms, _ := strconv.Atoi(b.Target)
 		return "Пауза " + strings.Replace(strconv.FormatFloat(float64(ms)/1000, 'f', -1, 64), ".", ",", 1) + " с"
+	case store.KindTimer:
+		sec, _ := strconv.Atoi(b.Target)
+		if sec%60 == 0 {
+			return fmt.Sprintf("Таймер %d мин", sec/60)
+		}
+		return fmt.Sprintf("Таймер %d:%02d", sec/60, sec%60)
 	case store.KindKeys:
 		return b.Target
 	case store.KindSystem:

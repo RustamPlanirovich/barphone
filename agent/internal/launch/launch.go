@@ -97,6 +97,9 @@ const (
 	MaxWait = 60_000
 )
 
+// MaxTimer is the longest timer, in seconds.
+const MaxTimer = 24 * 60 * 60
+
 func Validate(b store.Button) error {
 	if !b.Kind.Valid() {
 		return errors.New("неизвестный тип кнопки")
@@ -121,6 +124,11 @@ func Validate(b store.Button) error {
 		ms, err := strconv.Atoi(strings.TrimSpace(b.Target))
 		if err != nil || ms < MinWait || ms > MaxWait {
 			return fmt.Errorf("пауза — от %d мс до %d с", MinWait, MaxWait/1000)
+		}
+		return nil
+	case store.KindTimer:
+		if sec, err := strconv.Atoi(strings.TrimSpace(b.Target)); err != nil || sec < 1 || sec > MaxTimer {
+			return errors.New("таймер — от 1 секунды до 24 часов")
 		}
 		return nil
 	}

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../protocol/link.dart';
 import '../protocol/models.dart';
+import '../timers.dart';
 import 'glyphs.dart';
 import 'theme.dart';
 import 'volume_slider.dart';
@@ -118,6 +119,32 @@ void showNote(BuildContext context, String text) {
     ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1200)));
 }
 
+/// Timer button: start it, or (after asking) stop it.
+Future<void> pressTimer(BuildContext context, DeckTimers timers, MachineLink link, DeckButton b) async {
+  final key = DeckTimers.key(link.machine.id, b.id);
+  final left = timers.left(key);
+  if (left == null) {
+    final s = b.seconds ?? 0;
+    if (s <= 0) return;
+    HapticFeedback.lightImpact();
+    timers.start(key, Duration(seconds: s), b.title);
+    return;
+  }
+  HapticFeedback.mediumImpact();
+  final stop = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: Text('Остановить «${b.title}»?'),
+      content: Text('Осталось ${formatLeft(left)}.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Пусть идёт')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Остановить')),
+      ],
+    ),
+  );
+  if (stop == true) timers.stop(key);
+}
+
 /// Long press: always offer the open windows and "start a new one".
 Future<void> showButtonWindows(BuildContext context, MachineLink link, DeckButton b, void Function(bool ok) flash) async {
   HapticFeedback.mediumImpact();
@@ -185,12 +212,21 @@ class BackTile extends StatelessWidget {
 }
 
 class DeckTile extends StatefulWidget {
-  const DeckTile({super.key, required this.button, required this.link, required this.size, required this.enabled, this.onOpenFolder});
+  const DeckTile({
+    super.key,
+    required this.button,
+    required this.link,
+    required this.size,
+    required this.enabled,
+    this.onOpenFolder,
+    this.timers,
+  });
   final DeckButton button;
   final MachineLink link;
   final double size;
   final bool enabled;
   final void Function(DeckButton folder)? onOpenFolder;
+  final DeckTimers? timers; // needed by timer buttons
 
   @override
   State<DeckTile> createState() => _DeckTileState();
@@ -237,6 +273,11 @@ class _DeckTileState extends State<DeckTile> {
                 HapticFeedback.selectionClick();
                 widget.onOpenFolder?.call(b);
               }
+            : b.isTimer
+            ? () {
+                final timers = widget.timers;
+                if (timers != null) pressTimer(context, timers, widget.link, b);
+              }
             : () => pressButton(context, widget.link, b, _setFlash),
         // Long press: app buttons offer their open windows, the volume button turns into a slider.
         onLongPress: widget.enabled && b.launchesApp ? () => showButtonWindows(context, widget.link, b, _setFlash) : null,
@@ -268,7 +309,9 @@ class _DeckTileState extends State<DeckTile> {
                 children: [
                   Expanded(
                     child: Center(
-                      child: ButtonIcon(button: b, link: widget.link, size: s * .5),
+                      child: b.isTimer && widget.timers != null
+                          ? _Countdown(button: b, link: widget.link, timers: widget.timers!, size: s)
+                          : ButtonIcon(button: b, link: widget.link, size: s * .5),
                     ),
                   ),
                   SizedBox(height: s * .04),
@@ -285,6 +328,53 @@ class _DeckTileState extends State<DeckTile> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A timer's face: its icon while idle, the time left (and a ring) while running.
+class _Countdown extends StatelessWidget {
+  const _Countdown({required this.button, required this.link, required this.timers, required this.size});
+  final DeckButton button;
+  final MachineLink link;
+  final DeckTimers timers;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final key = DeckTimers.key(link.machine.id, button.id);
+    return ListenableBuilder(
+      listenable: timers,
+      builder: (context, _) {
+        final left = timers.left(key);
+        if (left == null) return ButtonIcon(button: button, link: link, size: size * .5);
+        final total = (button.seconds ?? 1) * 1000;
+        return SizedBox.square(
+          dimension: size * .58,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CircularProgressIndicator(
+                value: (left.inMilliseconds / total).clamp(0.0, 1.0),
+                strokeWidth: size * .035,
+                color: C.accent,
+                backgroundColor: C.border,
+              ),
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(size * .07),
+                  child: FittedBox(
+                    child: Text(
+                      formatLeft(left),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

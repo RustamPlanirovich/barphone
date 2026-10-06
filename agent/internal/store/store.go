@@ -28,11 +28,12 @@ const (
 	KindFolder ButtonKind = "folder" // opens its own Buttons on the phone; one level deep
 	KindMacro  ButtonKind = "macro"  // runs its Steps one after another
 	KindWait   ButtonKind = "wait"   // a macro step only: pause for Target milliseconds
+	KindTimer  ButtonKind = "timer"  // counts down Target seconds on the phone
 )
 
 func (k ButtonKind) Valid() bool {
 	switch k {
-	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait:
+	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer:
 		return true
 	}
 	return false

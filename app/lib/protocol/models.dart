@@ -23,12 +23,13 @@ class MachineInfo {
 class DeckButton {
   final String id;
   final String title;
-  final String kind; // app | path | url | keys | text | system | folder | macro
+  final String kind; // app | path | url | keys | text | system | folder | macro | timer
   final String? icon;
   final String? glyph; // built-in picture: "keys", "text" or a system action id
   final String? control; // "slider": hold and drag (volume)
   final bool confirm; // ask before pressing (shutdown, restart)
   final List<DeckButton> buttons; // a folder's buttons
+  final int? seconds; // a timer's duration
 
   const DeckButton({
     required this.id,
@@ -39,6 +40,7 @@ class DeckButton {
     this.control,
     this.confirm = false,
     this.buttons = const [],
+    this.seconds,
   });
 
   /// Starts a program on the PC, so it can have open windows to choose from.
@@ -47,6 +49,9 @@ class DeckButton {
 
   /// Opens on the phone, showing its own buttons; the agent is not asked.
   bool get isFolder => kind == 'folder';
+
+  /// Counts down [seconds] on the phone; the agent is not asked.
+  bool get isTimer => kind == 'timer';
 
   factory DeckButton.fromJson(Map<String, dynamic> j) => DeckButton(
     id: j['id'] as String,
@@ -57,6 +62,7 @@ class DeckButton {
     control: j['control'] as String?,
     confirm: j['confirm'] == true,
     buttons: ((j['buttons'] as List?) ?? const []).map((b) => DeckButton.fromJson((b as Map).cast<String, dynamic>())).toList(),
+    seconds: (j['seconds'] as num?)?.toInt(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -68,6 +74,7 @@ class DeckButton {
     if (control != null) 'control': control,
     if (confirm) 'confirm': true,
     if (buttons.isNotEmpty) 'buttons': [for (final b in buttons) b.toJson()],
+    if (seconds != null) 'seconds': seconds,
   };
 }
 

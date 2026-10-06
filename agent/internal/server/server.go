@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -146,6 +147,8 @@ type wireButton struct {
 	Confirm bool `json:"confirm,omitempty"`
 	// Buttons: a folder's buttons.
 	Buttons []wireButton `json:"buttons,omitempty"`
+	// Seconds: a timer's duration; the phone counts down by itself.
+	Seconds int `json:"seconds,omitempty"`
 }
 
 type stateMsg struct {
@@ -203,6 +206,9 @@ func wireButtons(buttons []store.Button) []wireButton {
 			wb.Buttons = wireButtons(b.Buttons)
 		case store.KindMacro:
 			wb.Glyph = string(b.Kind) // never the steps: they hold paths and texts
+		case store.KindTimer:
+			wb.Glyph = string(b.Kind)
+			wb.Seconds, _ = strconv.Atoi(b.Target)
 		case store.KindSystem:
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
@@ -350,7 +356,7 @@ func (s *Server) iconWorker(ctx context.Context) {
 
 // iconFor extracts (once per target) and stores a native icon; "" if there is none.
 func (s *Server) iconFor(kind store.ButtonKind, target string) string {
-	if kind == store.KindFolder || kind == store.KindMacro {
+	if kind == store.KindFolder || kind == store.KindMacro || kind == store.KindTimer {
 		return "" // a built-in glyph unless the user sets an icon
 	}
 	key := iconKey(kind, target)

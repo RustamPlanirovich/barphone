@@ -248,7 +248,7 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 		return res
 	}
 	if !agentHandles(b.Kind) {
-		res.Error = "unsupported" // an app too old to open folders itself
+		res.Error = "unsupported" // an app too old to open folders or run timers itself
 		return res
 	}
 	if b.Kind == store.KindMacro {
@@ -381,8 +381,8 @@ func (s *Server) pushRecent(id string) {
 }
 
 // agentHandles reports whether pressing a kind is the agent's business: a folder opens
-// on the phone without asking the agent.
-func agentHandles(k store.ButtonKind) bool { return k != store.KindFolder }
+// and a timer counts down on the phone without asking the agent.
+func agentHandles(k store.ButtonKind) bool { return k != store.KindFolder && k != store.KindTimer }
 
 func mustJSON(v any) []byte {
 	data, err := json.Marshal(v)

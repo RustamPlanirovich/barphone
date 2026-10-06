@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../protocol/link.dart';
 import '../state.dart';
@@ -22,11 +25,41 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _machinesPage = 0, _deckPage = 1;
   final _pages = PageController(initialPage: _deckPage);
   int _page = _deckPage;
+  StreamSubscription<String>? _timeUp;
+
+  @override
+  void initState() {
+    super.initState();
+    _timeUp = widget.app.timers.finished.listen(_onTimeUp);
+  }
 
   @override
   void dispose() {
+    _timeUp?.cancel();
     _pages.dispose();
     super.dispose();
+  }
+
+  /// A timer ran out: buzz a few times and say so until dismissed.
+  Future<void> _onTimeUp(String title) async {
+    if (!mounted) return;
+    unawaited(_buzz());
+    await showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        icon: const Icon(Icons.alarm_rounded, size: 40, color: C.accent),
+        title: Text(title),
+        content: const Text('Время вышло'),
+        actions: [FilledButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
+      ),
+    );
+  }
+
+  static Future<void> _buzz() async {
+    for (var i = 0; i < 4; i++) {
+      HapticFeedback.heavyImpact();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
   }
 
   void _go(int page) {

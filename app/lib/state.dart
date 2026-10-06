@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:nsd/nsd.dart' as nsd;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'timers.dart';
 import 'protocol/client.dart';
 import 'protocol/link.dart';
 import 'protocol/models.dart';
@@ -24,6 +25,11 @@ class DiscoveredAgent {
 }
 
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
+  AppState({DeckTimers? timers}) : timers = timers ?? DeckTimers();
+
+  /// Timer buttons count down here, on the phone.
+  final DeckTimers timers;
+
   late SharedPreferences _prefs;
   String deviceId = '';
   String deviceName = 'Android';
@@ -116,6 +122,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (resumed == _resumed) return;
     _resumed = resumed;
     if (resumed) {
+      timers.check(); // a timer may have run out while the app was away
       for (final l in _links.values) {
         if (l.status != LinkStatus.unauthorized) l.start();
         l.reconnectNow();
@@ -293,6 +300,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     for (final l in _links.values) {
       l.dispose();
     }
+    timers.dispose();
     super.dispose();
   }
 }
