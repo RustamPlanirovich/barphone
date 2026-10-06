@@ -18,7 +18,8 @@ class AppWindow {
   final String id;
   final String title;
   final bool active; // in front on the PC
-  const AppWindow(this.id, this.title, {this.active = false});
+  final int desktop; // 1-based virtual desktop when it is on another one; 0 = this one
+  const AppWindow(this.id, this.title, {this.active = false, this.desktop = 0});
 }
 
 class LaunchResult {
@@ -42,7 +43,12 @@ class LaunchResult {
       action: m['action'] as String?,
       windows: [
         for (final w in (m['windows'] as List?) ?? const [])
-          AppWindow((w as Map)['id'] as String, (w['title'] as String?) ?? '', active: w['active'] == true),
+          AppWindow(
+            (w as Map)['id'] as String,
+            (w['title'] as String?) ?? '',
+            active: w['active'] == true,
+            desktop: (w['desktop'] as num?)?.toInt() ?? 0,
+          ),
       ],
       value: (m['value'] as num?)?.toDouble(),
       muted: m['muted'] as bool?,
@@ -81,6 +87,9 @@ class MachineLink {
 
   /// The PC's virtual desktops, for the desktops tile (null: not known, e.g. a Mac).
   final desktops = ValueNotifier<DesktopInfo?>(null);
+
+  /// A Google Meet call going on on the PC (null: none), for the call panel.
+  final call = ValueNotifier<CallInfo?>(null);
   String? host;
 
   /// The current connection is TLS (pictures then come over HTTPS too).
@@ -288,6 +297,11 @@ class MachineLink {
         try {
           onNotice?.call(AgentNotice.fromJson(_machine.name, msg));
         } catch (_) {}
+      case 'call':
+        try {
+          final c = CallInfo.fromJson(msg);
+          call.value = c.active ? c : null;
+        } catch (_) {}
       case 'desktops':
         try {
           desktops.value = DesktopInfo.fromJson(msg);
@@ -335,6 +349,9 @@ class MachineLink {
     if (!r.ok) desktops.value = known;
     return r;
   }
+
+  /// The call panel: "mic", "camera", "hand" or "show".
+  Future<LaunchResult> callAction(String action) => _request({'type': 'call', 'action': action});
 
   // ---- trackpad (only on behalf of a "trackpad" button; see docs/protocol.md) ----
 

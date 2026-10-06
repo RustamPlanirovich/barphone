@@ -124,6 +124,10 @@ func (macLauncher) MoveDesktop(steps int) error {
 	return nil
 }
 
+// Calls: window titles need the Screen Recording permission on macOS; not done yet.
+func (macLauncher) Call() (CallInfo, error) { return CallInfo{}, ErrUnsupported }
+func (macLauncher) CallAction(string) error { return ErrUnsupported }
+
 // The mouse needs CGEvent (cgo); typing goes through System Events as for buttons.
 func (macLauncher) MovePointer(int, int) error { return ErrUnsupported }
 func (macLauncher) Click(string, bool) error   { return ErrUnsupported }

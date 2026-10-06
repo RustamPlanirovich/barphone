@@ -43,6 +43,8 @@ type fakeLauncher struct {
 	commands  []string // command buttons run: "target @ dir"
 	desktops  launch.DesktopInfo
 	moves     []int // MoveDesktop calls
+	call      launch.CallInfo
+	calls     []string // CallAction calls
 }
 
 func (f *fakeLauncher) Launch(b store.Button) error {
@@ -115,6 +117,23 @@ func (f *fakeLauncher) Minimize(b store.Button, id string) error {
 	return nil
 }
 func (f *fakeLauncher) OpenURL(string) error { return nil }
+func (f *fakeLauncher) Call() (launch.CallInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.call, nil
+}
+func (f *fakeLauncher) CallAction(action string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.call.Active {
+		return launch.ErrWindowGone
+	}
+	f.calls = append(f.calls, action)
+	if action == "camera" {
+		f.call.Camera = !f.call.Camera
+	}
+	return nil
+}
 func (f *fakeLauncher) Desktops() (launch.DesktopInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

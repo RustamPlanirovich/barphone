@@ -141,6 +141,8 @@ type inbound struct {
 	Confirmed bool     `json:"confirmed"` // launch: the user confirmed a dangerous action
 	Value     *float64 `json:"value"`     // volume: level to set (0..1); absent = just read
 
+	Action string `json:"action"` // call: mic, camera, hand, show
+
 	// Virtual desktops (see desktopMsg).
 	Move     int  `json:"move"`
 	To       *int `json:"to"`
@@ -245,6 +247,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			c.queue(mustJSON(s.pressButton(msg, canChoose)))
 		case "desktop":
 			c.queue(mustJSON(s.desktopMsg(msg)))
+		case "call":
+			c.queue(mustJSON(s.callAction(msg)))
 		case "pointer", "scroll", "click", "type", "key":
 			if res, answer := s.remoteInput(msg); answer {
 				c.queue(mustJSON(res))

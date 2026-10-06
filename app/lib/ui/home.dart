@@ -7,6 +7,7 @@ import '../protocol/link.dart';
 import '../protocol/models.dart';
 import '../state.dart';
 import 'add_machine.dart';
+import 'call_panel.dart';
 import 'deck_page.dart';
 import 'machines_page.dart';
 import 'recent_page.dart';
@@ -122,13 +123,26 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The deck page. A landscape screen with a second computer connected shows both decks
   /// side by side: the active one on the left.
   Widget _deck(BuildContext context, MachineLink active) {
-    final other = MediaQuery.orientationOf(context) == Orientation.landscape ? widget.app.companion : null;
-    if (other == null) {
-      return DeckPage(app: widget.app, link: active, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd);
-    }
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final other = landscape ? widget.app.companion : null;
     Widget half(MachineLink link) => Expanded(
       child: DeckPage(app: widget.app, link: link, half: true, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd),
     );
+    if (other == null) {
+      final single = DeckPage(app: widget.app, link: active, onShowMachines: () => _go(_machinesPage), onAddMachine: _openAdd);
+      if (!landscape) return single;
+      // One computer and a Meet call on it: its controls take the second half.
+      return ValueListenableBuilder<CallInfo?>(
+        valueListenable: active.call,
+        builder: (context, call, _) =>
+            call == null || !active.present ? single : _split(half(active), Expanded(child: CallPanel(link: active))),
+      );
+    }
+    return _split(half(active), half(other));
+  }
+
+  /// Two halves side by side with the swipe hints shared.
+  Widget _split(Widget left, Widget right) {
     return SafeArea(
       child: Column(
         children: [
@@ -137,9 +151,9 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                half(active),
+                left,
                 Container(width: 1, margin: const EdgeInsets.symmetric(vertical: 12), color: C.border),
-                half(other),
+                right,
               ],
             ),
           ),

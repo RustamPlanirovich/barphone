@@ -178,25 +178,32 @@ func topWindows() []windows.HWND {
 // switchable applies the Alt+Tab rules: visible, unowned, not a tool window, not cloaked
 // (suspended Store apps and windows on other virtual desktops are cloaked), has a title.
 func switchable(h windows.HWND) (title string, ok bool) {
+	title, cloaked, ok := switchableAnyDesktop(h)
+	return title, ok && !cloaked
+}
+
+// switchableAnyDesktop is switchable, but tells a cloaked window instead of skipping it:
+// the caller decides whether it is a window on another virtual desktop.
+func switchableAnyDesktop(h windows.HWND) (title string, cloaked, ok bool) {
 	if !windows.IsWindowVisible(h) {
-		return "", false
+		return "", false, false
 	}
 	if owner, _, _ := procGetWindow.Call(uintptr(h), gwOwner); owner != 0 {
-		return "", false
+		return "", false, false
 	}
 	if ex, _, _ := procGetWindowLongPtrW.Call(uintptr(h), gwlExStyle); ex&wsExToolWindow != 0 {
-		return "", false
+		return "", false, false
 	}
-	var cloaked uint32
-	if hr, _, _ := procDwmGetWindowAttribute.Call(uintptr(h), dwmwaCloaked, uintptr(unsafe.Pointer(&cloaked)), 4); hr == 0 && cloaked != 0 {
-		return "", false
+	var c uint32
+	if hr, _, _ := procDwmGetWindowAttribute.Call(uintptr(h), dwmwaCloaked, uintptr(unsafe.Pointer(&c)), 4); hr == 0 && c != 0 {
+		cloaked = true
 	}
 	buf := make([]uint16, 512)
 	n, _, _ := procGetWindowTextW.Call(uintptr(h), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 	if n == 0 {
-		return "", false
+		return "", false, false
 	}
-	return windows.UTF16ToString(buf[:n]), true
+	return windows.UTF16ToString(buf[:n]), cloaked, true
 }
 
 func windowClass(h windows.HWND) string {
@@ -222,7 +229,8 @@ func processExe(pid uint32, cache map[uint32]string) string {
 	return exe
 }
 
-// matchingWindows lists the switchable windows of the button's app. COM thread only.
+// matchingWindows lists the switchable windows of the button's app on every virtual
+// desktop, as if there were one. COM thread only.
 func matchingWindows(b store.Button) []Window {
 	if b.Kind == store.KindURL {
 		return nil
@@ -234,11 +242,20 @@ func matchingWindows(b store.Button) []Window {
 	self := uint32(os.Getpid())
 	exes := map[uint32]string{}
 	front := frontWindow()
+	vdm := newDesktopManager()
+	defer vdm.release()
+	ids, cur := desktopList()
 	var out []Window
 	for _, h := range topWindows() {
-		title, ok := switchable(h)
+		title, cloaked, ok := switchableAnyDesktop(h)
 		if !ok {
 			continue
+		}
+		desktop := 0
+		if cloaked {
+			if desktop = otherDesktop(vdm, ids, cur, h); desktop == 0 {
+				continue // cloaked for another reason: a suspended Store app and the like
+			}
 		}
 		var pid uint32
 		windows.GetWindowThreadProcessId(h, &pid)
@@ -251,7 +268,7 @@ func matchingWindows(b store.Button) []Window {
 		}
 		if hit {
 			minimized, _, _ := procIsIconic.Call(uintptr(h))
-			out = append(out, Window{ID: hwndID(h), Title: title, Active: h == front && minimized == 0})
+			out = append(out, Window{ID: hwndID(h), Title: title, Active: h == front && minimized == 0, Desktop: desktop})
 		}
 	}
 	return out
@@ -306,6 +323,9 @@ func (w *winLauncher) Focus(b store.Button, windowID string) error {
 			}
 			v, _ := strconv.ParseUint(windowID, 10, 64)
 			h := windows.HWND(uintptr(v))
+			if win.Desktop > 0 {
+				w.goToDesktop(win.Desktop) // "as if one desktop": go where the window is
+			}
 			if minimized, _, _ := procIsIconic.Call(uintptr(h)); minimized != 0 {
 				procShowWindow.Call(uintptr(h), swRestore)
 			}

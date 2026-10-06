@@ -101,6 +101,7 @@ func (s *Server) Run(ctx context.Context) {
 	}()
 	go s.statsLoop(ctx)
 	go s.desktopsLoop(ctx)
+	go s.callLoop(ctx)
 	s.wakeIcons()
 	var last []byte
 	for {

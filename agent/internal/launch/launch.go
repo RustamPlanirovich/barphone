@@ -58,6 +58,10 @@ type Launcher interface {
 	// moving steps to the right (+) or left (-).
 	Desktops() (DesktopInfo, error)
 	MoveDesktop(steps int) error
+	// A Google Meet call in progress (Active false when there is none), and its controls:
+	// "mic", "camera", "hand", "show". ErrWindowGone when there is no call window.
+	Call() (CallInfo, error)
+	CallAction(action string) error
 	// AppKeys lists the foreground keys (see ForegroundApp) an app/path button stands
 	// for, so a profile can be bound to that app. Nil if it cannot tell.
 	AppKeys(b store.Button) []string
@@ -68,6 +72,8 @@ type Window struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Active bool   `json:"active,omitempty"` // the window in front on the PC
+	// Desktop: the 1-based virtual desktop of a window that is on another one (0 = here).
+	Desktop int `json:"desktop,omitempty"`
 }
 
 var (

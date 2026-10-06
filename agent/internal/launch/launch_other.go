@@ -55,6 +55,10 @@ func (xdgLauncher) Desktops() (DesktopInfo, error) { return DesktopInfo{}, ErrUn
 
 func (xdgLauncher) MoveDesktop(int) error { return ErrUnsupported }
 
+func (xdgLauncher) Call() (CallInfo, error) { return CallInfo{}, ErrUnsupported }
+
+func (xdgLauncher) CallAction(string) error { return ErrUnsupported }
+
 func (xdgLauncher) SetBrightness(float64) error { return ErrUnsupported }
 
 func WatchForeground(ctx context.Context, onChange func(ForegroundApp)) { <-ctx.Done() }

@@ -53,6 +53,13 @@ type DesktopInfo struct {
 	Names   []string `json:"names"`   // "" = not renamed
 }
 
+// CallInfo is a video call in progress (Google Meet), for the phone's call controls.
+type CallInfo struct {
+	Active bool   `json:"active"`
+	App    string `json:"app,omitempty"`
+	Camera bool   `json:"camera"` // the camera is in use (Meet releases it when video is off)
+}
+
 // VolumeState is the PC's master output volume.
 type VolumeState struct {
 	Level float64 `json:"value"` // 0..1

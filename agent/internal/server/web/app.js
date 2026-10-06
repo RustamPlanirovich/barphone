@@ -338,6 +338,8 @@ function renderNet() {
   const row = $('#autostartRow');
   row.hidden = !state.autostart.supported;
   $('#autostart').checked = !!state.autostart.enabled;
+  $('#meetRow').hidden = state.machine.os !== 'windows';
+  $('#meetControls').checked = state.meetControls !== false;
 }
 
 const CATEGORY = { Public: 'общедоступная', Private: 'частная', DomainAuthenticated: 'доменная' };
@@ -508,6 +510,10 @@ $('#machineName').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.
 
 $('#colsMinus').onclick = () => editDeck((d) => { d.columns = Math.max(2, d.columns - 1); });
 $('#colsPlus').onclick = () => editDeck((d) => { d.columns = Math.min(8, d.columns + 1); });
+
+$('#meetControls').addEventListener('change', async (e) => {
+  try { await req('PUT', '/api/meet', { enabled: e.target.checked }); } catch (err) { toast(err.message, true); refresh(); }
+});
 
 $('#autostart').addEventListener('change', async (e) => {
   try { await req('PUT', '/api/autostart', { enabled: e.target.checked }); } catch (err) { toast(err.message, true); refresh(); }

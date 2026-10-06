@@ -161,7 +161,16 @@ class _WindowTile extends StatelessWidget {
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2),
                 ),
               ),
-              Text(active ? 'тап — свернуть' : 'тап — перейти', style: const TextStyle(fontSize: 11, color: C.muted)),
+              Text(
+                active
+                    ? 'тап — свернуть'
+                    : window.desktop > 0
+                    ? 'на столе ${window.desktop} · тап — туда'
+                    : 'тап — перейти',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: window.desktop > 0 ? C.accent : C.muted),
+              ),
             ],
           ),
         ),

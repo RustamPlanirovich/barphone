@@ -93,6 +93,18 @@ class DeckButton {
   };
 }
 
+/// A video call going on on the PC ("call" message).
+class CallInfo {
+  final bool active;
+  final String app; // "meet"
+  final bool camera; // the camera is on
+
+  const CallInfo({required this.active, this.app = 'meet', this.camera = false});
+
+  factory CallInfo.fromJson(Map<String, dynamic> j) =>
+      CallInfo(active: j['active'] == true, app: (j['app'] as String?) ?? 'meet', camera: j['camera'] == true);
+}
+
 /// The PC's virtual desktops ("desktops" message, "desktop" answers).
 class DesktopInfo {
   final int count;

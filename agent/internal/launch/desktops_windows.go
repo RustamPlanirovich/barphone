@@ -52,20 +52,31 @@ func currentDesktopID(k registry.Key) []byte {
 	return cur
 }
 
-func (w *winLauncher) Desktops() (DesktopInfo, error) {
+// desktopList reads the virtual desktops (IDs in order) and the current one; nil IDs
+// when there has never been a second desktop.
+func desktopList() (ids [][]byte, cur []byte) {
 	k, err := registry.OpenKey(registry.CURRENT_USER, vdKey, registry.QUERY_VALUE)
 	if err != nil {
-		return DesktopInfo{Count: 1, Names: []string{""}}, nil // never had a second desktop
+		return nil, nil
 	}
 	defer k.Close()
-	ids, _, err := k.GetBinaryValue("VirtualDesktopIDs")
-	if err != nil || len(ids) < 16 {
-		return DesktopInfo{Count: 1, Names: []string{""}}, nil
+	raw, _, err := k.GetBinaryValue("VirtualDesktopIDs")
+	if err != nil {
+		return nil, nil
 	}
-	cur := currentDesktopID(k)
-	info := DesktopInfo{Count: len(ids) / 16}
-	for i := 0; i < info.Count; i++ {
-		id := ids[i*16 : i*16+16]
+	for i := 0; i+16 <= len(raw); i += 16 {
+		ids = append(ids, raw[i:i+16])
+	}
+	return ids, currentDesktopID(k)
+}
+
+func (w *winLauncher) Desktops() (DesktopInfo, error) {
+	ids, cur := desktopList()
+	if len(ids) == 0 {
+		return DesktopInfo{Count: 1, Names: []string{""}}, nil // never had a second desktop
+	}
+	info := DesktopInfo{Count: len(ids)}
+	for i, id := range ids {
 		if cur != nil && bytes.Equal(id, cur) {
 			info.Current = i
 		}
@@ -78,6 +89,9 @@ func (w *winLauncher) Desktops() (DesktopInfo, error) {
 	}
 	return info, nil
 }
+
+// sleepForSwitch waits for Windows' desktop switch animation.
+func sleepForSwitch() { time.Sleep(350 * time.Millisecond) }
 
 func (w *winLauncher) MoveDesktop(steps int) error {
 	key := "Right"

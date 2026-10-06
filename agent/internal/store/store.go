@@ -118,6 +118,8 @@ type Config struct {
 	Profiles  []Profile `json:"profiles"`
 	Devices   []Device  `json:"devices"`
 	Recent    []Recent  `json:"recent"`
+	// NoMeetControls turns off the phone's Google Meet call panel.
+	NoMeetControls bool `json:"noMeetControls,omitempty"`
 
 	// LegacyDeck is the single deck of config files written before profiles existed;
 	// Open moves it into the default profile.

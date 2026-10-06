@@ -50,6 +50,7 @@ func (s *Server) UIHandler() http.Handler {
 	mux.HandleFunc("DELETE /api/devices/{id}", s.uiRemoveDevice)
 	mux.HandleFunc("POST /api/pickfile", s.uiPickFile)
 	mux.HandleFunc("PUT /api/autostart", s.uiSetAutostart)
+	mux.HandleFunc("PUT /api/meet", s.uiSetMeet)
 	mux.HandleFunc("POST /api/firewall/allow", s.uiFirewallAllow)
 	return s.uiGuard(mux)
 }
@@ -141,6 +142,7 @@ func (s *Server) uiState(w http.ResponseWriter, r *http.Request) {
 		"pairing":       s.pairingInfo(cfg, addrs),
 		"systemActions": launch.SystemActions,
 		"firewall":      s.firewallStatus(),
+		"meetControls":  !cfg.NoMeetControls,
 	}
 	if s.Autostart != nil {
 		on, err := s.Autostart.Enabled()
