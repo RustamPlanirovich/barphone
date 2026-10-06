@@ -16,7 +16,9 @@ import (
 // its window, or the Meet app) whose process is using the microphone or the camera right
 // now. Windows tracks that for the tray icon; it is read from the registry, never changed.
 
-var meetTitle = regexp.MustCompile(`(?i)^(google\s+)?meet\s*[-–—]\s*\S`)
+// Meet puts a no-break space (U+00A0) after "Meet" in its title: RE2's \s is ASCII
+// only, so spaces are matched as any Unicode space.
+var meetTitle = regexp.MustCompile(`(?i)^(google[\s\p{Zs}]+)?meet[\s\p{Zs}]*[-–—][\s\p{Zs}]*\S`)
 
 const consentStore = `Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\`
 
