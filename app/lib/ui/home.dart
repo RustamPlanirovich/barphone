@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../protocol/link.dart';
+import '../protocol/models.dart';
 import '../state.dart';
 import 'add_machine.dart';
 import 'deck_page.dart';
@@ -26,16 +27,22 @@ class _HomeScreenState extends State<HomeScreen> {
   final _pages = PageController(initialPage: _deckPage);
   int _page = _deckPage;
   StreamSubscription<String>? _timeUp;
+  StreamSubscription<AgentNotice>? _noticeSub;
+  OverlayEntry? _noticeEntry;
+  Timer? _noticeTimer;
 
   @override
   void initState() {
     super.initState();
     _timeUp = widget.app.timers.finished.listen(_onTimeUp);
+    _noticeSub = widget.app.notices.listen(_showNotice);
   }
 
   @override
   void dispose() {
     _timeUp?.cancel();
+    _noticeSub?.cancel();
+    _hideNotice();
     _pages.dispose();
     super.dispose();
   }
@@ -53,6 +60,26 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [FilledButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
       ),
     );
+  }
+
+  /// A notice from a computer: a card over the top of the screen (the deck does not move),
+  /// gone after a few seconds or on a tap; a newer one replaces it.
+  void _showNotice(AgentNotice n) {
+    if (!mounted) return;
+    _hideNotice();
+    n.level == 'error' ? HapticFeedback.heavyImpact() : HapticFeedback.mediumImpact();
+    _noticeEntry = OverlayEntry(
+      builder: (_) => NoticeCard(notice: n, onTap: _hideNotice),
+    );
+    Overlay.of(context).insert(_noticeEntry!);
+    _noticeTimer = Timer(Duration(seconds: n.level == 'error' ? 10 : 6), _hideNotice);
+  }
+
+  void _hideNotice() {
+    _noticeTimer?.cancel();
+    _noticeTimer = null;
+    _noticeEntry?.remove();
+    _noticeEntry = null;
   }
 
   static Future<void> _buzz() async {
@@ -221,6 +248,76 @@ class _Step extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(child: Text(text)),
         ],
+      ),
+    );
+  }
+}
+
+class NoticeCard extends StatelessWidget {
+  const NoticeCard({super.key, required this.notice, required this.onTap});
+  final AgentNotice notice;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color) = switch (notice.level) {
+      'ok' => (Icons.check_circle_rounded, C.ok),
+      'error' => (Icons.error_rounded, C.danger),
+      _ => (Icons.notifications_rounded, C.accent),
+    };
+    final title = [notice.machine, if (notice.title.isNotEmpty) notice.title].join(' · ');
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Material(
+              color: C.surface,
+              elevation: 10,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: onTap,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 16, 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: color.withValues(alpha: .6)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(icon, color: color, size: 26),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            if (notice.text.isNotEmpty)
+                              Text(
+                                notice.text,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: C.muted),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

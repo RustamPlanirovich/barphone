@@ -71,6 +71,8 @@ func (n *deckNormalizer) buttons(in []store.Button, where level) ([]store.Button
 			return nil, errors.New("пауза бывает только шагом макроса")
 		case where == inMacro && !stepKind(b.Kind):
 			return nil, errors.New("в макрос можно добавить только действия и паузы")
+		case where == inMacro && b.Kind == store.KindCommand && b.Confirm:
+			return nil, errors.New("команду с подтверждением нельзя добавить в макрос")
 		case where == inMacro && b.Kind == store.KindSystem:
 			if a, ok := launch.LookupSystemAction(b.Target); ok && a.Confirm {
 				return nil, fmt.Errorf("«%s» — только отдельной кнопкой, с подтверждением на телефоне", a.Title)
@@ -95,6 +97,11 @@ func (n *deckNormalizer) buttons(in []store.Button, where level) ([]store.Button
 		}
 		if !b.Kind.Launches() {
 			b.OnRunning, b.Args = "", ""
+		}
+		if b.Kind == store.KindCommand {
+			b.Dir = strings.TrimSpace(b.Dir)
+		} else {
+			b.Dir, b.Confirm, b.KeepOpen = "", false, false
 		}
 		kids, steps := b.Buttons, b.Steps
 		b.Buttons, b.Steps = nil, nil
@@ -298,7 +305,7 @@ func (s *Server) normalizeProfiles(c *store.Config, in []store.Profile) ([]store
 // stepKind: what a macro step can be.
 func stepKind(k store.ButtonKind) bool {
 	switch k {
-	case store.KindApp, store.KindPath, store.KindURL, store.KindKeys, store.KindText, store.KindSystem, store.KindWait:
+	case store.KindApp, store.KindPath, store.KindURL, store.KindKeys, store.KindText, store.KindSystem, store.KindWait, store.KindCommand:
 		return true
 	}
 	return false

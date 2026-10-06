@@ -3,7 +3,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -46,7 +48,14 @@ func main() {
 	dir := flag.String("config-dir", "", "config directory (default: <user config dir>/barphone)")
 	noBrowser := flag.Bool("no-browser", false, "do not open the configuration UI on start")
 	noTray := flag.Bool("no-tray", false, "run without a tray icon")
+	notifyText := flag.String("notify", "", "send this text to the phones through the running agent, then exit")
+	notifyTitle := flag.String("title", "", "with -notify: a title")
+	notifyLevel := flag.String("level", "info", "with -notify: info, ok or error")
 	flag.Parse()
+
+	if *notifyText != "" || *notifyTitle != "" {
+		os.Exit(sendNotice(*uiAddr, *notifyTitle, *notifyText, *notifyLevel))
+	}
 
 	if *dir == "" {
 		base, err := os.UserConfigDir()
@@ -180,4 +189,30 @@ func fatal(logger *log.Logger, format string, args ...any) {
 		fmt.Fprintln(os.Stderr, msg)
 	}
 	os.Exit(1)
+}
+
+// sendNotice is "barphone-agent -notify": scripts on this PC tell the phones something
+// through the agent that is already running (its loopback UI port).
+func sendNotice(uiAddr, title, text, level string) int {
+	body, _ := json.Marshal(map[string]string{"title": title, "text": text, "level": level})
+	req, err := http.NewRequest(http.MethodPost, "http://"+uiAddr+"/api/notify", bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Barphone-UI", "1")
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "barphone agent is not running:", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	answer, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "barphone: %s %s\n", resp.Status, answer)
+		return 1
+	}
+	fmt.Println(string(answer))
+	return 0
 }

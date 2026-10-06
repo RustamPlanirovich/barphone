@@ -26,6 +26,7 @@ const _glyphs = <String, (IconData, Color)>{
   'timer': (Icons.timer_outlined, Color(0xFF2EB8A6)),
   'cpu': (Icons.speed_rounded, Color(0xFF4F7CFF)),
   'trackpad': (Icons.mouse_rounded, Color(0xFF5FA8FF)),
+  'command': (Icons.terminal_rounded, Color(0xFF2EB8A6)),
   'ram': (Icons.memory_rounded, Color(0xFF8E6BFF)),
 };
 

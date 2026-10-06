@@ -153,6 +153,16 @@
     <ul class="app-list" id="systemList"></ul>
   </div>
   <div class="tab-panel more" data-panel="more" hidden>
+    <form class="form more-item" id="commandForm">
+      <h4>💻 Команда</h4>
+      <p class="small muted">Строка запуска, как в консоли: <code>git pull</code>, <code>npm run build</code>, <code>backup.bat</code>. Запускается в окне консоли на этом компьютере; когда закончится, телефон получит уведомление.</p>
+      <label>Команда <input id="commandTarget" required spellcheck="false" maxlength="2048" placeholder="git pull"></label>
+      <label>Папка <span class="muted">(необязательно, по умолчанию — домашняя)</span> <input id="commandDir" spellcheck="false" placeholder="%USERPROFILE%\projects\site"></label>
+      <label>Название <span class="muted">(необязательно)</span> <input id="commandTitle" maxlength="64"></label>
+      <label class="check" id="commandConfirmRow"><input type="checkbox" id="commandConfirm"> Спрашивать подтверждение на телефоне</label>
+      <label class="check"><input type="checkbox" id="commandKeep"> Оставить окно консоли открытым (без уведомления)</label>
+      <div class="actions"><button class="btn primary" type="submit">Добавить</button></div>
+    </form>
     <form class="form more-item" id="folderForm">
       <h4>📁 Папка</h4>
       <p class="small muted">На телефоне открывается и показывает свои кнопки. Чтобы положить кнопку в папку, перетащите её на середину папки.</p>
@@ -236,6 +246,9 @@
         </div>
       </div>
       <label id="editArgsRow">Аргументы <input id="editArgs" spellcheck="false"></label>
+      <label id="editDirRow" hidden>Папка <input id="editDir" spellcheck="false" placeholder="по умолчанию — домашняя"></label>
+      <label class="check" id="editConfirmRow" hidden><input type="checkbox" id="editConfirm"> Спрашивать подтверждение на телефоне</label>
+      <label class="check" id="editKeepRow" hidden><input type="checkbox" id="editKeep"> Оставить окно консоли открытым (без уведомления)</label>
       <label id="editPlaceRow">Где лежит <select id="editPlace"></select></label>
       <label id="editRunningRow">Если уже открыто
         <select id="editRunning">

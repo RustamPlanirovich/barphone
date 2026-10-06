@@ -135,6 +135,14 @@ func Validate(b store.Button) error {
 			return fmt.Errorf("пауза — от %d мс до %d с", MinWait, MaxWait/1000)
 		}
 		return nil
+	case store.KindCommand:
+		if strings.TrimSpace(b.Target) == "" || len(b.Target) > 2048 || strings.ContainsAny(b.Target, "\r\n") {
+			return errors.New("команда — одна строка до 2048 символов")
+		}
+		if len(b.Dir) > 1024 {
+			return errors.New("слишком длинный путь к папке")
+		}
+		return nil
 	case store.KindStat:
 		if b.Target != "cpu" && b.Target != "ram" {
 			return errors.New("показатель — cpu или ram")

@@ -103,7 +103,16 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  MachineLink _newLink(SavedMachine m) => MachineLink(m, onChanged: notifyListeners, onMachineUpdated: (_) => _persist());
+  MachineLink _newLink(SavedMachine m) =>
+      MachineLink(m, onChanged: notifyListeners, onMachineUpdated: (_) => _persist(), onNotice: _notices.add);
+
+  final _notices = StreamController<AgentNotice>.broadcast();
+
+  /// Notices from every computer, for the home screen to show.
+  Stream<AgentNotice> get notices => _notices.stream;
+
+  /// Shows a notice as if a computer had sent it (tests, and the phone's own messages).
+  void notice(AgentNotice n) => _notices.add(n);
 
   Timer? _persistTimer;
   void _persist() {
@@ -301,6 +310,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       l.dispose();
     }
     timers.dispose();
+    _notices.close();
     super.dispose();
   }
 }

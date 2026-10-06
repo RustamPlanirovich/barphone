@@ -9,6 +9,7 @@ import (
 	"image"
 	"log"
 	"net/http"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
@@ -50,6 +51,8 @@ type Server struct {
 	Stats interface {
 		Read() (sysstat.Sample, error)
 	}
+	// Command prepares a command button's process; nil means launch.Command.
+	Command func(store.Button) (*exec.Cmd, error)
 
 	hub    hub
 	fwBusy atomic.Bool
@@ -119,6 +122,9 @@ func (s *Server) init() {
 	defer s.iconMu.Unlock()
 	if s.Stats == nil {
 		s.Stats = sysstat.New()
+	}
+	if s.Command == nil {
+		s.Command = launch.Command
 	}
 	if s.iconTried == nil {
 		s.iconTried = map[string]bool{}
@@ -227,6 +233,8 @@ func wireButtons(buttons []store.Button) []wireButton {
 			wb.Glyph, wb.Stat = b.Target, b.Target
 		case store.KindTrackpad:
 			wb.Glyph = string(b.Kind)
+		case store.KindCommand:
+			wb.Glyph, wb.Confirm = string(b.Kind), b.Confirm
 		case store.KindSystem:
 			wb.Glyph = b.Target
 			if a, ok := launch.LookupSystemAction(b.Target); ok {
@@ -375,7 +383,7 @@ func (s *Server) iconWorker(ctx context.Context) {
 // iconFor extracts (once per target) and stores a native icon; "" if there is none.
 func (s *Server) iconFor(kind store.ButtonKind, target string) string {
 	switch kind {
-	case store.KindFolder, store.KindMacro, store.KindTimer, store.KindStat, store.KindTrackpad:
+	case store.KindFolder, store.KindMacro, store.KindTimer, store.KindStat, store.KindTrackpad, store.KindCommand:
 		return "" // a built-in glyph unless the user sets an icon
 	}
 	key := iconKey(kind, target)

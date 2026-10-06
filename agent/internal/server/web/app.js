@@ -54,10 +54,10 @@ const iconURL = (hash) => `/api/icon/${hash}.png`;
 const KIND_LABEL = {
   app: 'Приложение', path: 'Файл или программа', url: 'Ссылка',
   keys: 'Сочетание клавиш', text: 'Текст', system: 'Системное действие', folder: 'Папка',
-  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер', stat: 'Живая плитка', trackpad: 'Трекпад',
+  macro: 'Макрос', wait: 'Пауза', timer: 'Таймер', stat: 'Живая плитка', trackpad: 'Трекпад', command: 'Команда',
 };
 const GLYPH = {
-  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️', cpu: '📈', ram: '🧠', trackpad: '🖱️',
+  keys: '⌨️', text: '📝', folder: '📁', macro: '⚡', wait: '⏱️', timer: '⏲️', cpu: '📈', ram: '🧠', trackpad: '🖱️', command: '💻',
   media_play_pause: '⏯️', media_next: '⏭️', media_prev: '⏮️', media_stop: '⏹️',
   volume: '🎚️', volume_up: '🔊', volume_down: '🔉', mute: '🔇',
   brightness: '🔆', brightness_up: '☀️', brightness_down: '🔅',
@@ -532,9 +532,11 @@ function openAdd(macroId = null) {
   const macro = macroId && findButton(macroId);
   $('#addHeading').textContent = macro ? `Шаг макроса «${macro.title}»`
     : folder ? `Добавить в папку «${folder.title}»` : 'Добавить кнопку';
-  $('#addDialog [data-tab=more]').hidden = Boolean(macro);
-  $('#folderForm').hidden = Boolean(folder);
-  $('#folderInFolder').hidden = !folder;
+  // A macro step can be a command (without confirmation), nothing else from «Ещё».
+  for (const el of document.querySelectorAll('#addDialog .more-item')) el.hidden = Boolean(macro) && el.id !== 'commandForm';
+  $('#commandConfirmRow').hidden = Boolean(macro);
+  $('#folderForm').hidden = Boolean(folder) || Boolean(macro);
+  $('#folderInFolder').hidden = !folder || Boolean(macro);
   selectTab('apps');
   dlg.showModal();
   $('#appSearch').value = '';
@@ -586,6 +588,7 @@ async function addButton(b) {
   if (stepFor) return addStep(b);
   const folder = curFolder();
   const nb = { id: '', title: b.title || '', kind: b.kind, target: b.target || '', args: b.args || '' };
+  if (b.kind === 'command') Object.assign(nb, { dir: b.dir || '', confirm: Boolean(b.confirm), keepOpen: Boolean(b.keepOpen) });
   if (b.kind === 'folder') nb.buttons = [];
   curList().push(nb);
   localVersion++;
@@ -601,7 +604,7 @@ async function addStep(b) {
   const macro = findButton(stepFor);
   $('#addDialog').close();
   if (!macro) return false;
-  (macro.steps = macro.steps || []).push({ title: b.title || '', kind: b.kind, target: b.target || '', args: b.args || '' });
+  (macro.steps = macro.steps || []).push({ title: b.title || '', kind: b.kind, target: b.target || '', args: b.args || '', dir: b.dir || '', keepOpen: Boolean(b.keepOpen) });
   localVersion++;
   render();
   clearTimeout(saveTimer);
@@ -663,6 +666,16 @@ function renderSteps(force = false) {
       onclick: () => editSteps((list) => list.splice(i, 1)) }, '✕'),
   )));
 }
+
+$('#commandForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  addButton({
+    kind: 'command', target: $('#commandTarget').value.trim(), dir: $('#commandDir').value.trim(), title: $('#commandTitle').value.trim(),
+    confirm: $('#commandConfirm').checked, keepOpen: $('#commandKeep').checked,
+  });
+  e.target.reset();
+  $('#addDialog').close();
+});
 
 $('#addTrackpad').onclick = () => {
   $('#addDialog').close();
@@ -821,7 +834,11 @@ function openEdit(id) {
   if (!b) return;
   const action = b.kind === 'system' ? systemAction(b.target) : null;
   $('#editTitle').value = b.title;
-  $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие', timer: 'Длительность, минут' }[b.kind] || 'Что запускать';
+  $('#editTargetLabel').textContent = { keys: 'Сочетание клавиш', system: 'Действие', timer: 'Длительность, минут', command: 'Команда' }[b.kind] || 'Что запускать';
+  for (const id of ['#editDirRow', '#editConfirmRow', '#editKeepRow']) $(id).hidden = b.kind !== 'command';
+  $('#editDir').value = b.dir || '';
+  $('#editConfirm').checked = Boolean(b.confirm);
+  $('#editKeep').checked = Boolean(b.keepOpen);
   $('#editTarget').value = action ? action.title : b.kind === 'timer' ? timerMinutes(b) : b.target;
   $('#editTarget').readOnly = b.kind === 'app' || b.kind === 'system';
   $('#editTargetRow').hidden = ['text', 'folder', 'macro', 'stat', 'trackpad'].includes(b.kind);
@@ -843,6 +860,7 @@ function openEdit(id) {
     timer: ' · отсчёт идёт на телефоне: тап — старт, ещё тап — остановить',
     stat: ' · на телефоне показывает загрузку и обновляется каждые пару секунд; тап — диспетчер задач',
     trackpad: ' · тап открывает на телефоне трекпад и клавиатуру; удалите кнопку — и телефон больше не сможет управлять мышью',
+    command: ' · запускается в окне консоли на этом ПК; когда закончится, телефон получит уведомление',
   };
   $('#editKind').textContent = KIND_LABEL[b.kind] + (hints[b.kind] || '') +
     (action && action.slider ? (action.id === 'volume'
@@ -903,6 +921,13 @@ bindEditField('#editTitle', 'title');
 bindEditField('#editTarget', 'target');
 bindEditField('#editArgs', 'args');
 bindEditField('#editText', 'target');
+bindEditField('#editDir', 'dir');
+for (const [sel, field] of [['#editConfirm', 'confirm'], ['#editKeep', 'keepOpen']]) {
+  $(sel).addEventListener('change', (e) => {
+    const value = e.target.checked;
+    editDeck(() => { const b = editing(); if (b) b[field] = value; });
+  });
+}
 $('#editRunning').addEventListener('change', (e) => {
   const value = e.target.value;
   editDeck(() => { const b = editing(); if (b) b.onRunning = value; });

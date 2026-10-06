@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -38,6 +40,7 @@ type fakeLauncher struct {
 	volume    launch.VolumeState
 	bright    float64
 	input     []string // trackpad: "move 3,-2", "click right", "scroll 0,120"
+	commands  []string // command buttons run: "target @ dir"
 }
 
 func (f *fakeLauncher) Launch(b store.Button) error {
@@ -140,6 +143,15 @@ func (f *fakeLauncher) SetBrightness(level float64) error {
 	return nil
 }
 
+// TestHelperProcess is not a test: command buttons in tests run it instead of a shell.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("BARPHONE_HELPER") != "1" {
+		return
+	}
+	code, _ := strconv.Atoi(os.Getenv("BARPHONE_HELPER_EXIT"))
+	os.Exit(code)
+}
+
 type fakeStats struct{}
 
 func (fakeStats) Read() (sysstat.Sample, error) {
@@ -184,6 +196,19 @@ func newEnv(t *testing.T) *env {
 		// Tests never go to the internet for link icons, nor measure this computer.
 		SiteIcon: func(context.Context, string) (image.Image, error) { return nil, errors.New("offline in tests") },
 		Stats:    fakeStats{},
+		// Command buttons run this test binary (TestHelperProcess), never a console window.
+		Command: func(b store.Button) (*exec.Cmd, error) {
+			fake.mu.Lock()
+			fake.commands = append(fake.commands, b.Target+" @ "+b.Dir)
+			fake.mu.Unlock()
+			code := "0"
+			if c, ok := strings.CutPrefix(b.Target, "exit "); ok {
+				code = c
+			}
+			cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
+			cmd.Env = append(os.Environ(), "BARPHONE_HELPER=1", "BARPHONE_HELPER_EXIT="+code)
+			return cmd, nil
+		},
 		Addrs: func() []netinfo.Addr {
 			return []netinfo.Addr{{IP: "192.168.1.10", Iface: "Wi-Fi", MAC: "aa:bb:cc:dd:ee:ff"}}
 		},

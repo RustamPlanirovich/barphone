@@ -25,7 +25,7 @@ class MachineInfo {
 class DeckButton {
   final String id;
   final String title;
-  final String kind; // app | path | url | keys | text | system | folder | macro | timer | stat | trackpad
+  final String kind; // app | path | url | keys | text | system | folder | macro | timer | stat | trackpad | command
   final String? icon;
   final String? glyph; // built-in picture: "keys", "text" or a system action id
   final String? control; // "slider": hold and drag (volume)
@@ -88,6 +88,23 @@ class DeckButton {
     if (seconds != null) 'seconds': seconds,
     if (stat != null) 'stat': stat,
   };
+}
+
+/// A message from the PC ("notify"): a command finished, or a script said something.
+class AgentNotice {
+  final String machine; // name of the computer it came from
+  final String title;
+  final String text;
+  final String level; // info | ok | error
+
+  const AgentNotice({required this.machine, required this.title, required this.text, this.level = 'info'});
+
+  factory AgentNotice.fromJson(String machine, Map<String, dynamic> j) => AgentNotice(
+    machine: machine,
+    title: (j['title'] as String?) ?? '',
+    text: (j['text'] as String?) ?? '',
+    level: (j['level'] as String?) ?? 'info',
+  );
 }
 
 /// CPU load and memory of the PC, for live tiles; null fields were not measured.

@@ -46,6 +46,9 @@ func (s *Server) startMacro(m store.Button) bool {
 // runStep does one action. Unlike a button press, an app that is already open is simply
 // brought up: nobody is there to pick a window, and putting it away would be surprising.
 func (s *Server) runStep(st store.Button) error {
+	if st.Kind == store.KindCommand {
+		return s.runCommand(st)
+	}
 	if st.Kind.Launches() && st.OnRunning != store.OnRunningNew {
 		if ws, _ := s.Launcher.Windows(st); len(ws) > 0 && s.Launcher.Focus(st, ws[0].ID) == nil {
 			return nil

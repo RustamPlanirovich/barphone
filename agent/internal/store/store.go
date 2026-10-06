@@ -33,11 +33,13 @@ const (
 	// KindTrackpad opens the phone's trackpad and keyboard; the agent accepts pointer and
 	// typing messages only on behalf of such a button.
 	KindTrackpad ButtonKind = "trackpad"
+	// KindCommand runs Target as a command line in Dir (a console window on Windows).
+	KindCommand ButtonKind = "command"
 )
 
 func (k ButtonKind) Valid() bool {
 	switch k {
-	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer, KindStat, KindTrackpad:
+	case KindApp, KindPath, KindURL, KindKeys, KindText, KindSystem, KindFolder, KindMacro, KindWait, KindTimer, KindStat, KindTrackpad, KindCommand:
 		return true
 	}
 	return false
@@ -56,6 +58,11 @@ type Button struct {
 	// OnRunning: "" (default) switches to the app's open window, asking the phone to
 	// choose when there are several; "new" always starts another instance.
 	OnRunning string `json:"onRunning,omitempty"`
+
+	// Command buttons: working folder, ask on the phone first, keep the console open.
+	Dir      string `json:"dir,omitempty"`
+	Confirm  bool   `json:"confirm,omitempty"`
+	KeepOpen bool   `json:"keepOpen,omitempty"`
 
 	Buttons []Button `json:"buttons,omitempty"` // a folder's buttons
 	// Steps of a macro: actions (no folders, macros or confirmed actions) and waits. They

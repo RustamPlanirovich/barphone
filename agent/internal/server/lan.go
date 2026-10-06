@@ -274,6 +274,23 @@ func (s *Server) pressButton(msg inbound, canChoose bool) resultMsg {
 		}
 		return res
 	}
+	if b.Kind == store.KindCommand {
+		switch {
+		case msg.Type != "launch":
+			res.Error = "bad_request"
+		case b.Confirm && !msg.Confirmed:
+			res.Error = "confirm_required"
+		default:
+			if err := s.runCommand(b); err != nil {
+				s.Log.Printf("command %q: %v", b.Title, err)
+				res.Error = "launch_failed"
+				return res
+			}
+			s.pushRecent(b.ID)
+			res.OK, res.Action = true, actionDone
+		}
+		return res
+	}
 	if b.Kind == store.KindMacro {
 		switch {
 		case msg.Type != "launch":

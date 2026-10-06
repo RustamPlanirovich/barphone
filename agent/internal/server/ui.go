@@ -44,6 +44,7 @@ func (s *Server) UIHandler() http.Handler {
 	mux.HandleFunc("PUT /api/buttons/{id}/icon", s.uiSetIcon)
 	mux.HandleFunc("DELETE /api/buttons/{id}/icon", s.uiResetIcon)
 	mux.HandleFunc("POST /api/buttons/{id}/launch", s.uiLaunch)
+	mux.HandleFunc("POST /api/notify", s.uiNotify)
 	mux.HandleFunc("POST /api/pairing", s.uiStartPairing)
 	mux.HandleFunc("DELETE /api/pairing", s.uiCancelPairing)
 	mux.HandleFunc("DELETE /api/devices/{id}", s.uiRemoveDevice)
@@ -210,6 +211,12 @@ func defaultTitle(b store.Button) string {
 		return "Пауза " + strings.Replace(strconv.FormatFloat(float64(ms)/1000, 'f', -1, 64), ".", ",", 1) + " с"
 	case store.KindTrackpad:
 		return "Трекпад"
+	case store.KindCommand:
+		line := strings.TrimSpace(b.Target)
+		if r := []rune(line); len(r) > 24 {
+			line = string(r[:24]) + "…"
+		}
+		return line
 	case store.KindStat:
 		if b.Target == "ram" {
 			return "Память"
@@ -361,6 +368,14 @@ func (s *Server) uiLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Kind == store.KindStat {
 		b = monitorApp()
+	}
+	if b.Kind == store.KindCommand { // the owner clicked it on this PC: no phone confirmation
+		if err := s.runCommand(b); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "launch_failed", "message": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
 	}
 	if b.Kind == store.KindMacro {
 		if !s.startMacro(b) {

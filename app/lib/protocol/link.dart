@@ -48,7 +48,7 @@ class LaunchResult {
 }
 
 class MachineLink {
-  MachineLink(this._machine, {required this.onChanged, required this.onMachineUpdated}) {
+  MachineLink(this._machine, {required this.onChanged, required this.onMachineUpdated, this.onNotice}) {
     final cached = _machine.lastState;
     if (cached != null) {
       try {
@@ -59,6 +59,9 @@ class MachineLink {
 
   /// Called whenever status or state changes.
   final void Function() onChanged;
+
+  /// A "notify" message from the PC.
+  final void Function(AgentNotice)? onNotice;
 
   /// Called when something worth persisting changed (address that worked, name, MACs, last state).
   final void Function(SavedMachine) onMachineUpdated;
@@ -242,6 +245,10 @@ class MachineLink {
           );
           onMachineUpdated(_machine);
           onChanged();
+        } catch (_) {}
+      case 'notify':
+        try {
+          onNotice?.call(AgentNotice.fromJson(_machine.name, msg));
         } catch (_) {}
       case 'stats':
         try {

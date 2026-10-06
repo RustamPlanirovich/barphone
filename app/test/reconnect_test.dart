@@ -12,6 +12,7 @@ class _Agent {
   final sockets = <WebSocket>[];
   bool accepting = true;
   List<String> addrs = const [];
+  Map<String, String>? notice; // sent right after the state
 
   int get port => _http.port;
 
@@ -38,6 +39,7 @@ class _Agent {
           'recent': <dynamic>[],
         }),
       );
+      if (notice != null) ws.add(jsonEncode({'type': 'notify', ...notice!}));
       ws.listen((data) {
         final msg = jsonDecode(data as String) as Map;
         ws.add(jsonEncode({'type': 'result', 'req': msg['req'], 'ok': true, 'action': 'launched'}));
@@ -144,5 +146,24 @@ void main() {
     await until(() => link.state != null);
     expect(link.machine.hosts, ['127.0.0.1', '100.101.12.7']);
     expect(saved.last.hosts, ['127.0.0.1', '100.101.12.7'], reason: 'persisted');
+  });
+
+  test('a notice from the PC reaches the app, named after the computer', () async {
+    final agent = _Agent()..notice = {'title': 'Сборка', 'text': 'Упала', 'level': 'error'};
+    await agent.start();
+    final got = <AgentNotice>[];
+    final link = MachineLink(
+      SavedMachine(id: 'm', name: 'Рабочий ПК', os: 'windows', port: agent.port, hosts: const ['127.0.0.1'], token: 't'),
+      onChanged: () {},
+      onMachineUpdated: (_) {},
+      onNotice: got.add,
+    );
+    addTearDown(() async {
+      link.dispose();
+      await agent.stop();
+    });
+    link.start();
+    await until(() => got.isNotEmpty);
+    expect([got.single.machine, got.single.title, got.single.text, got.single.level], ['ПК', 'Сборка', 'Упала', 'error']);
   });
 }
